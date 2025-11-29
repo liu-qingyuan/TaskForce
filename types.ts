@@ -29,6 +29,19 @@ export interface GameStats {
 
 export type WeaponType = 'pistol' | 'machinegun' | 'shotgun' | 'sniper' | 'grenade' | 'rocket' | 'quantum';
 
+export type GameObjectType = 
+  | 'player' 
+  | 'bullet' 
+  | 'enemy_ground' 
+  | 'enemy_air' 
+  | 'enemy_mech' 
+  | 'enemy_jumper' 
+  | 'enemy_seeker' 
+  | 'enemy_dasher'
+  | 'particle' 
+  | 'crate' 
+  | 'explosion';
+
 // Particle system types for the game
 export interface GameObject {
   id: string;
@@ -39,7 +52,7 @@ export interface GameObject {
   width: number;
   height: number;
   color: string;
-  type: 'player' | 'bullet' | 'enemy_ground' | 'enemy_air' | 'enemy_mech' | 'particle' | 'crate' | 'explosion';
+  type: GameObjectType;
   hp: number;
   maxHp?: number;
   // Platformer specific
@@ -49,4 +62,8 @@ export interface GameObject {
   damage?: number;
   isGrenade?: boolean;
   isRocket?: boolean;
+  explosionRadius?: number;
+  // Visual variety & AI
+  variant?: number;
+  aiTimer?: number; // Used for jump cooldowns, charge states, etc.
 }

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GameStats, GameObject, PlayerProfile, WeaponType } from '../types';
+import { GameStats, GameObject, PlayerProfile, WeaponType, GameObjectType } from '../types';
 import { ArrowLeft, RefreshCw, Zap, Shield, Crosshair, Target, Bomb, Skull, Settings, Flame, Atom, Cpu } from 'lucide-react';
 import { AudioService } from '../services/audio';
 
@@ -168,7 +168,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           hp: 1000,
           maxHp: 1000,
           grounded: false,
-          facing: -1
+          facing: -1,
+          variant: 0 // Boss variant
       });
   };
 
@@ -180,65 +181,113 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     const bossExists = objectsRef.current.some(o => o.hp > 500 && o.type === 'enemy_mech' && o.width > 100);
     if (bossExists && Math.random() > 0.2) return; 
 
-    let enemyType: 'soldier' | 'drone' | 'mech';
-    const rand = Math.random();
-    
+    // New Enemy Probabilities based on Stage
+    let enemyType: GameObjectType = 'enemy_ground';
+    const r = Math.random();
+
     if (stage === 1) {
-        enemyType = 'soldier';
+        // Mostly soldiers, rare Jumper
+        if (r > 0.9) enemyType = 'enemy_jumper';
+        else enemyType = 'enemy_ground';
     } else if (stage === 2) {
-        enemyType = rand > 0.6 ? 'drone' : 'soldier';
+        // Introduce Seekers and Dashers
+        if (r > 0.9) enemyType = 'enemy_dasher';
+        else if (r > 0.8) enemyType = 'enemy_seeker';
+        else if (r > 0.6) enemyType = 'enemy_jumper';
+        else if (r > 0.4) enemyType = 'enemy_air'; // Drone
+        else enemyType = 'enemy_ground';
     } else {
-        if (rand > 0.85) enemyType = 'mech';
-        else if (rand > 0.5) enemyType = 'drone';
-        else enemyType = 'soldier';
+        // Full Chaos
+        if (r > 0.85) enemyType = 'enemy_mech';
+        else if (r > 0.75) enemyType = 'enemy_dasher';
+        else if (r > 0.65) enemyType = 'enemy_seeker';
+        else if (r > 0.55) enemyType = 'enemy_jumper';
+        else if (r > 0.35) enemyType = 'enemy_air';
+        else enemyType = 'enemy_ground';
     }
     
-    if (enemyType === 'drone') {
+    // Choose visual variant (0, 1, or 2)
+    const variant = Math.floor(Math.random() * 3);
+
+    if (enemyType === 'enemy_air') {
         const hp = 30 + (stage * 10);
+        const colors = ['#ef4444', '#06b6d4', '#f59e0b'];
         objectsRef.current.push({
             id: `enemy-air-${Date.now()}`,
             x: spawnX,
             y: Math.random() * (canvasRef.current!.height - 300) + 50,
-            vx: -3 - (stage * 0.5),
-            vy: 0,
+            vx: -3 - (stage * 0.5), vy: 0,
             width: 30, height: 20,
-            color: '#ef4444',
+            color: colors[variant],
             type: 'enemy_air',
-            hp: hp,
-            maxHp: hp,
-            facing: -1
+            hp: hp, maxHp: hp,
+            facing: -1, variant
         });
-    } else if (enemyType === 'mech') {
+    } else if (enemyType === 'enemy_seeker') {
+        const hp = 20 + (stage * 10);
+        objectsRef.current.push({
+            id: `enemy-seeker-${Date.now()}`,
+            x: spawnX,
+            y: Math.random() * (canvasRef.current!.height - 200) + 50,
+            vx: -2, vy: 0,
+            width: 25, height: 25,
+            color: '#a855f7', // Purple
+            type: 'enemy_seeker',
+            hp: hp, maxHp: hp,
+            facing: -1, variant
+        });
+    } else if (enemyType === 'enemy_mech') {
          const hp = 200 + (stage * 50);
+         const colors = ['#581c87', '#be185d', '#1e3a8a'];
          objectsRef.current.push({
             id: `enemy-mech-${Date.now()}`,
-            x: spawnX,
-            y: 0,
-            vx: -1, 
-            vy: 0,
+            x: spawnX, y: 0,
+            vx: -1, vy: 0,
             width: 60, height: 80,
-            color: '#581c87', 
+            color: colors[variant], 
             type: 'enemy_mech',
-            hp: hp,
-            maxHp: hp,
-            grounded: false,
-            facing: -1
+            hp: hp, maxHp: hp,
+            grounded: false, facing: -1, variant
         });
+    } else if (enemyType === 'enemy_jumper') {
+        const hp = 40 + (stage * 10);
+        objectsRef.current.push({
+           id: `enemy-jumper-${Date.now()}`,
+           x: spawnX, y: 0,
+           vx: -2, vy: 0,
+           width: 30, height: 35,
+           color: '#4ade80', // Green
+           type: 'enemy_jumper',
+           hp: hp, maxHp: hp,
+           grounded: false, facing: -1, variant,
+           aiTimer: 0 // Cooldown for jumps
+       });
+    } else if (enemyType === 'enemy_dasher') {
+        const hp = 60 + (stage * 15);
+        objectsRef.current.push({
+           id: `enemy-dasher-${Date.now()}`,
+           x: spawnX, y: 0,
+           vx: -1, vy: 0,
+           width: 45, height: 25,
+           color: '#eab308', // Yellow
+           type: 'enemy_dasher',
+           hp: hp, maxHp: hp,
+           grounded: false, facing: -1, variant,
+           aiTimer: 0 // 0 = patrol, 1 = charge
+       });
     } else {
+        // Standard Soldier
         const hp = 50 + (stage * 10);
+        const colors = ['#f97316', '#10b981', '#64748b'];
         objectsRef.current.push({
             id: `enemy-ground-${Date.now()}`,
-            x: spawnX,
-            y: 0, 
-            vx: -2 - (stage * 0.5),
-            vy: 0,
+            x: spawnX, y: 0, 
+            vx: -2 - (stage * 0.5), vy: 0,
             width: 30, height: 50,
-            color: '#f97316',
+            color: colors[variant],
             type: 'enemy_ground',
-            hp: hp,
-            maxHp: hp,
-            grounded: false,
-            facing: -1
+            hp: hp, maxHp: hp,
+            grounded: false, facing: -1, variant
         });
     }
   };
@@ -246,14 +295,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   const spawnTerrain = (canvasWidth: number, groundLevel: number) => {
       const spawnX = cameraRef.current + canvasWidth + 100 + Math.random() * 50;
       
-      // 5 Tiers of height based on jump mechanics
-      // Tier 1: 120px (Single Jump)
-      // Tier 2: 240px 
-      // Tier 3: 360px
-      // Tier 4: 480px
-      // Tier 5: 600px
-      
-      // Determine tier (randomly, but lower tiers more common)
       const r = Math.random();
       let tier = 1;
       if (r > 0.9) tier = 5;
@@ -265,11 +306,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       const height = PLATFORM_THICKNESS; 
       const y = groundLevel - (tier * TIER_HEIGHT);
 
-      // Don't spawn if too high off screen
       if (y < 50) return;
 
-      // Wall Chance (Only on ground level essentially, or blocking)
-      // For now, let's stick to platforms for flow, maybe rare walls
       const isWall = Math.random() > 0.9 && tier === 1;
       
       if (isWall) {
@@ -311,8 +349,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
               score: scoreRef.current, 
               enemiesDefeated: prev.enemiesDefeated + 1 
           }));
-      } else {
-          // Play hit sound handled in collision
       }
   };
 
@@ -442,7 +478,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     }
 
     // Terrain Collision (Player)
-    objectsRef.current.filter(o => o.type === 'crate').forEach(crate => {
+    const crates = objectsRef.current.filter(o => o.type === 'crate');
+    crates.forEach(crate => {
         if (checkCollision(player, crate)) {
             const overlapX = (player.width + crate.width)/2 - Math.abs((player.x + player.width/2) - (crate.x + crate.width/2));
             const overlapY = (player.height + crate.height)/2 - Math.abs((player.y + player.height/2) - (crate.y + crate.height/2));
@@ -487,15 +524,13 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         bossSpawnedRef.current = stageRef.current;
     }
 
-    // --- Spawning Logic (Distance Based) ---
-    // Spawn Enemy every ~25m, decreasing with stage
+    // --- Spawning Logic ---
     const enemySpawnInterval = Math.max(15, 30 - (stageRef.current * 2));
     if (currentDist > lastEnemySpawnDistRef.current + enemySpawnInterval) {
         spawnEnemy(canvas.width);
         lastEnemySpawnDistRef.current = currentDist;
     }
 
-    // Spawn Terrain every ~20m
     const terrainSpawnInterval = 20;
     if (currentDist > lastTerrainSpawnDistRef.current + terrainSpawnInterval) {
         spawnTerrain(canvas.width, groundLevel);
@@ -505,14 +540,10 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     // --- Shooting ---
     const weapon = weapons[selectedWeaponIdx];
     const now = Date.now();
-    
-    // Auto fire check: If key is held OR autoFire is toggled, and cooldown is passed
     const isFiring = keysRef.current['f'] || keysRef.current['Enter'] || keysRef.current['click'] || autoFireRef.current;
 
     if (isFiring && now - lastShotTimeRef.current > weapon.cooldown) {
-        
         AudioService.shoot(weapon.id);
-        
         const playerScreenX = player.x - cameraRef.current + player.width/2;
         const playerScreenY = player.y + player.height/3;
         const angle = Math.atan2(mouseRef.current.y - playerScreenY, mouseRef.current.x - playerScreenX);
@@ -520,127 +551,187 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         const startY = player.y + player.height/3;
 
         if (weapon.id === 'quantum') {
-            // Quantum Nuke Logic
-            // Flash screen
             ctx.fillStyle = 'white';
             ctx.fillRect(0,0,canvas.width, canvas.height);
-            // Kill all enemies
             objectsRef.current.forEach(o => {
                 if (o.type.startsWith('enemy')) {
                     applyDamage(o, 9999);
                     spawnExplosion(o.x + o.width/2, o.y + o.height/2, 200, 0);
                 }
             });
-            spawnExplosion(player.x + 300, player.y, 400, 0); // Visual FX
+            spawnExplosion(player.x + 300, player.y, 400, 0); 
         } else {
              const createBullet = (angleOffset: number = 0) => {
                  const finalAngle = angle + angleOffset;
-                 const vx = Math.cos(finalAngle) * weapon.speed;
-                 const vy = Math.sin(finalAngle) * weapon.speed;
-
                  objectsRef.current.push({
                     id: `b-${now}-${Math.random()}`,
                     x: startX + (Math.cos(finalAngle) * 30),
                     y: startY + (Math.sin(finalAngle) * 30),
-                    vx: vx,
-                    vy: vy, 
+                    vx: Math.cos(finalAngle) * weapon.speed,
+                    vy: Math.sin(finalAngle) * weapon.speed,
                     width: (weapon.id === 'grenade' || weapon.id === 'rocket') ? 12 : 10, 
                     height: (weapon.id === 'grenade' || weapon.id === 'rocket') ? 12 : 4,
                     color: weapon.color,
                     type: 'bullet',
                     hp: 1, 
                     damage: weapon.damage,
-                    explosionRadius: weapon.explosionRadius, // Pass explosion radius to bullet
+                    explosionRadius: weapon.explosionRadius,
                     isGrenade: weapon.id === 'grenade',
                     isRocket: weapon.id === 'rocket'
                 });
             };
-
             const count = weapon.projectileCount || 1;
             if (count > 1) {
-                // Spread logic
                 for (let i = 0; i < count; i++) {
-                    const spread = (i - (count-1)/2) * 0.1;
-                    createBullet(spread);
+                    createBullet((i - (count-1)/2) * 0.1);
                 }
             } else {
                 createBullet(0);
             }
         }
-
         lastShotTimeRef.current = now;
         player.facing = Math.abs(angle) > Math.PI/2 ? -1 : 1;
     }
 
     // --- Object Logic ---
-    const crates = objectsRef.current.filter(o => o.type === 'crate');
-
     objectsRef.current.forEach(obj => {
         if (obj.type === 'crate') return;
 
-        // Enemy Physics
-        if (obj.type === 'enemy_ground' || obj.type === 'enemy_mech') {
+        // --- GROUND ENEMY PHYSICS & AI ---
+        // Includes: Soldier, Mech, Jumper, Dasher
+        if (['enemy_ground', 'enemy_mech', 'enemy_jumper', 'enemy_dasher'].includes(obj.type)) {
             obj.vy += GRAVITY;
             
-            // Apply Horizontal
-            const oldX = obj.x;
-            const dx = player.x - obj.x;
+            // X Movement Logic based on type
             let moveSpeed = 0;
-            
-            if (Math.abs(dx) < 1000) { 
-                const speed = obj.width > 100 ? 0.8 : (obj.type === 'enemy_mech' ? 0.5 : 2); 
-                // Basic AI: Move towards player
-                moveSpeed = dx > 0 ? speed : -speed;
-                obj.facing = dx > 0 ? 1 : -1;
+            const dx = player.x - obj.x;
+            const dist = Math.abs(dx);
+
+            if (dist < 1000) {
+                // Determine base speed
+                let speed = 2;
+                if (obj.type === 'enemy_mech') speed = 0.5;
+                if (obj.width > 100) speed = 0.8; // Boss
+
+                // AI BEHAVIOR
+                if (obj.type === 'enemy_jumper') {
+                    // Jumper Logic
+                    obj.aiTimer = (obj.aiTimer || 0) + 1;
+                    if (obj.grounded && obj.aiTimer > 60 && dist < 400) {
+                        // Jump!
+                        if (Math.random() > 0.3) {
+                            obj.vy = -12; // Big jump
+                            obj.vx = dx > 0 ? 5 : -5;
+                            obj.grounded = false;
+                        }
+                        obj.aiTimer = 0;
+                    }
+                    if (!obj.grounded) {
+                        // Keep momentum in air
+                        moveSpeed = obj.vx;
+                    } else {
+                        // Stop when landed to charge next jump
+                        moveSpeed = 0;
+                        obj.vx = 0;
+                    }
+
+                } else if (obj.type === 'enemy_dasher') {
+                    // Dasher Logic
+                    const dy = Math.abs(player.y - obj.y);
+                    if (dist < 500 && dy < 50) {
+                        // Charge mode
+                        obj.aiTimer = 1; 
+                        moveSpeed = dx > 0 ? 8 : -8;
+                        obj.color = '#ef4444'; // Red when charging
+                    } else {
+                        // Patrol mode
+                        obj.aiTimer = 0;
+                        moveSpeed = dx > 0 ? 1 : -1;
+                        obj.color = '#eab308'; // Yellow normal
+                    }
+
+                } else {
+                    // Standard Soldier/Mech Tracking
+                    moveSpeed = dx > 0 ? speed : -speed;
+                    obj.facing = dx > 0 ? 1 : -1;
+                }
             }
-            obj.vx = moveSpeed;
+
+            // Apply X velocity if not overridden by special physics (like Jumper in air)
+            if (obj.type !== 'enemy_jumper' || obj.grounded) {
+                obj.vx = moveSpeed;
+            }
+            
             obj.x += obj.vx;
 
-            // Enemy-Crate Horizontal Collision
+            // Horizontal Wall Collision
+            const oldX = obj.x;
             let hitWall = false;
             for (const crate of crates) {
                 if (checkCollision(obj, crate)) {
-                    // Check horizontal overlap
                     const overlapX = (obj.width + crate.width)/2 - Math.abs((obj.x + obj.width/2) - (crate.x + crate.width/2));
                     const overlapY = (obj.height + crate.height)/2 - Math.abs((obj.y + obj.height/2) - (crate.y + crate.height/2));
                     
                     if (overlapX < overlapY && overlapY > 2) {
-                        // Wall hit: undo X movement and maybe reverse
                         obj.x = oldX;
                         hitWall = true;
                     }
                 }
             }
-            // If hit wall, maybe jump or stop? Simple turn around visually for now (actual logic: stop x)
-            if (hitWall) obj.vx = 0;
+            if (hitWall && obj.type !== 'enemy_jumper') {
+                 // Dashers turn around on wall hit? Or jump?
+                 if (obj.type === 'enemy_dasher') obj.vx = 0;
+            }
 
-            // Apply Vertical
+            // Vertical Movement
             obj.y += obj.vy;
+            obj.grounded = false; // Assume falling until hit floor
 
-            // Enemy-Crate Vertical Collision
+            // Floor/Crate Vertical Collision
             for (const crate of crates) {
                 if (checkCollision(obj, crate)) {
                      const overlapX = (obj.width + crate.width)/2 - Math.abs((obj.x + obj.width/2) - (crate.x + crate.width/2));
                      const overlapY = (obj.height + crate.height)/2 - Math.abs((obj.y + obj.height/2) - (crate.y + crate.height/2));
 
                      if (overlapX >= overlapY) {
-                         // Land on top
                          if (obj.vy > 0 && obj.y < crate.y) {
                              obj.y = crate.y - obj.height;
                              obj.vy = 0;
+                             obj.grounded = true;
                          } 
                      }
                 }
             }
-
+            // Ground Collision
             if (obj.y + obj.height >= groundLevel) {
                 obj.y = groundLevel - obj.height;
                 obj.vy = 0;
+                obj.grounded = true;
             }
-        } else if (obj.type === 'enemy_air') {
+
+        // --- AIR / SEEKER ENEMY PHYSICS ---
+        } else if (obj.type === 'enemy_air' || obj.type === 'enemy_seeker') {
             const dx = player.x - obj.x;
-            if (Math.abs(dx) < 1000) obj.x += dx > 0 ? 1.5 : -1.5;
-            obj.y += Math.sin(frameCountRef.current * 0.05) * 1; 
+            const dy = player.y - obj.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist < 1000) {
+                if (obj.type === 'enemy_seeker') {
+                    // Direct tracking
+                    if (dist > 10) {
+                        obj.vx = (dx / dist) * 3;
+                        obj.vy = (dy / dist) * 3;
+                    }
+                    obj.x += obj.vx;
+                    obj.y += obj.vy;
+                } else {
+                    // Standard Air (Sine wave)
+                    obj.x += dx > 0 ? 1.5 : -1.5;
+                    obj.y += Math.sin(frameCountRef.current * 0.05) * 1; 
+                }
+            }
+        
+        // --- BULLET PHYSICS ---
         } else if (obj.type === 'bullet') {
             if (obj.isGrenade) {
                 obj.vy += GRAVITY * 0.5;
@@ -649,7 +740,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                     spawnExplosion(obj.x, obj.y, obj.explosionRadius || 150, obj.damage || 200);
                 }
             } else if (obj.isRocket) {
-                // Rocket floor collision
                 if (obj.y > groundLevel) {
                     obj.hp = 0;
                     spawnExplosion(obj.x, obj.y, obj.explosionRadius || 200, obj.damage || 300);
@@ -657,9 +747,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             }
             obj.x += obj.vx;
             obj.y += obj.vy;
+        
+        // --- EFFECTS PHYSICS ---
         } else if (obj.type === 'explosion') {
             obj.hp--; 
-        } else {
+        } else if (obj.type === 'particle') {
             obj.x += obj.vx;
             obj.y += obj.vy;
             obj.width *= 0.9;
@@ -670,13 +762,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
     // --- Collisions ---
     const bullets = objectsRef.current.filter(o => o.type === 'bullet');
-    // Removed explosion processing from here since it's instant in spawnExplosion
     const enemies = objectsRef.current.filter(o => o.type.startsWith('enemy'));
 
     bullets.forEach(b => {
         enemies.forEach(e => {
             if (checkCollision(b, e)) {
-                
                 if (b.isGrenade) {
                     b.hp = 0;
                     spawnExplosion(b.x, b.y, b.explosionRadius || 150, b.damage || 200);
@@ -766,7 +856,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         if (o.type === 'player') {
             ctx.fillStyle = o.color;
             ctx.fillRect(0, 0, o.width, o.height); 
-            ctx.fillStyle = '#ef4444'; ctx.fillRect(0, 5, o.width, 10);
+            ctx.fillStyle = '#ef4444'; ctx.fillRect(0, 5, o.width, 10); // Visor
             
             ctx.save();
             ctx.translate(o.width/2, o.height/3);
@@ -781,23 +871,137 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             ctx.restore();
 
         } else if (o.type === 'enemy_mech') {
+            // ... Mech drawing (unchanged) ...
             const isBoss = o.width > 100;
             ctx.fillStyle = o.color;
-            ctx.fillRect(0,0,o.width, o.height);
+            ctx.fillRect(5, o.height - 25, 20, 25);
+            ctx.fillRect(o.width - 25, o.height - 25, 20, 25);
+            ctx.fillRect(0, 0, o.width, o.height - 20);
+            
+            const v = o.variant || 0;
+            if (v === 1) { 
+                ctx.fillStyle = '#9d174d';
+                ctx.fillRect(0, 20, o.width, 10);
+                ctx.fillRect(10, 10, o.width-20, o.height-50);
+            } else if (v === 2) { 
+                ctx.fillStyle = '#1e40af';
+                ctx.fillRect(-5, 0, 15, 30);
+                ctx.fillRect(o.width-10, 0, 15, 30);
+            }
             ctx.fillStyle = isBoss ? '#facc15' : '#a855f7';
-            ctx.fillRect(10, 10, o.width - 20, 20);
-            ctx.fillStyle = '#1e1b4b';
-            ctx.fillRect(5, o.height - 20, 15, 20);
-            ctx.fillRect(o.width - 20, o.height - 20, 15, 20);
+            ctx.fillRect(o.width/2 - 15, 10, 30, 20);
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(-10, o.height/2 - 5, 20, 10);
+
         } else if (o.type === 'enemy_ground') {
-            ctx.fillStyle = o.color;
-            ctx.fillRect(0, 0, o.width, o.height);
-            ctx.fillStyle = '#000'; ctx.fillRect(20, 10, 5, 5);
-        } else if (o.type === 'enemy_air') {
+            // ... Soldier drawing (unchanged) ...
              ctx.fillStyle = o.color;
-             ctx.beginPath();
-             ctx.moveTo(0, 0); ctx.lineTo(o.width, 0); ctx.lineTo(o.width/2, o.height);
-             ctx.fill();
+            const v = o.variant || 0;
+            if (v === 0) {
+                ctx.fillRect(5, 10, o.width-10, o.height-10);
+                ctx.fillStyle = '#c2410c';
+                ctx.fillRect(5, 0, o.width-10, 12);
+                ctx.fillStyle = '#000'; ctx.fillRect(5, 4, 10, 4);
+                ctx.fillStyle = '#1f2937'; ctx.fillRect(-5, 20, 15, 6);
+            } else if (v === 1) {
+                ctx.fillRect(0, 10, o.width, o.height-10);
+                ctx.fillStyle = '#065f46'; ctx.fillRect(0, 25, o.width, 10);
+                ctx.fillStyle = '#047857'; ctx.fillRect(0, 0, o.width, 14);
+                ctx.fillStyle = '#facc15'; ctx.fillRect(2, 4, 12, 5);
+                ctx.fillStyle = '#000'; ctx.fillRect(-10, 22, 20, 5);
+            } else {
+                ctx.fillRect(2, 5, o.width-4, o.height-5);
+                ctx.fillStyle = '#334155'; ctx.fillRect(-2, 8, 8, 15);
+                ctx.fillStyle = '#0f172a'; ctx.fillRect(2, -2, o.width-4, 15);
+                ctx.fillStyle = '#ef4444'; ctx.fillRect(2, 3, 6, 2); ctx.fillRect(10, 3, 6, 2);
+                ctx.fillStyle = '#0f172a'; ctx.fillRect(-8, 20, 18, 8);
+            }
+
+        } else if (o.type === 'enemy_air') {
+             // ... Air drawing (unchanged) ...
+             const v = o.variant || 0;
+             ctx.fillStyle = o.color;
+             if (v === 0) {
+                 ctx.beginPath();
+                 ctx.moveTo(-5, o.height/2); ctx.lineTo(o.width, 0); ctx.lineTo(o.width, o.height);
+                 ctx.fill();
+                 ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(o.width, o.height/2, 4, 0, Math.PI*2); ctx.fill();
+             } else if (v === 1) {
+                 ctx.beginPath();
+                 ctx.moveTo(0, o.height/2); ctx.lineTo(o.width/2, 0); ctx.lineTo(o.width, o.height/2); ctx.lineTo(o.width/2, o.height);
+                 ctx.fill();
+                 ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(o.width/2, o.height/2, 6, 0, Math.PI*2); ctx.fill();
+                 ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(o.width/2, o.height/2, 3, 0, Math.PI*2); ctx.fill();
+             } else {
+                 ctx.beginPath();
+                 ctx.moveTo(0, o.height/2); ctx.lineTo(10, 0); ctx.lineTo(o.width-10, 0); ctx.lineTo(o.width, o.height/2); ctx.lineTo(o.width-10, o.height); ctx.lineTo(10, o.height);
+                 ctx.fill();
+                 ctx.fillStyle = '#a855f7'; ctx.fillRect(10, o.height-5, o.width-20, 5);
+             }
+
+        } else if (o.type === 'enemy_jumper') {
+            // JUMPER (Cricket/Frog)
+            ctx.fillStyle = o.color;
+            // Body
+            ctx.beginPath();
+            ctx.ellipse(o.width/2, o.height/2, o.width/2, o.height/3, 0, 0, Math.PI*2);
+            ctx.fill();
+            // Legs
+            ctx.strokeStyle = '#15803d';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            if (!o.grounded) {
+                // Extended legs
+                ctx.moveTo(5, o.height/2); ctx.lineTo(0, o.height);
+                ctx.moveTo(o.width-5, o.height/2); ctx.lineTo(o.width, o.height);
+            } else {
+                // Folded legs
+                ctx.moveTo(5, o.height/2); ctx.lineTo(-5, o.height/2 + 10); ctx.lineTo(5, o.height);
+                ctx.moveTo(o.width-5, o.height/2); ctx.lineTo(o.width+5, o.height/2 + 10); ctx.lineTo(o.width-5, o.height);
+            }
+            ctx.stroke();
+            // Eyes
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath(); ctx.arc(o.width-5, 5, 3, 0, Math.PI*2); ctx.fill();
+
+        } else if (o.type === 'enemy_seeker') {
+            // SEEKER (Ghost/Spike)
+            ctx.fillStyle = o.color;
+            // Pulsing core effect
+            const pulse = 2 + Math.sin(frameCountRef.current * 0.2) * 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(0, o.height/2);
+            ctx.lineTo(o.width/2, 0 - pulse);
+            ctx.lineTo(o.width, o.height/2);
+            ctx.lineTo(o.width/2, o.height + pulse);
+            ctx.fill();
+
+            // Inner Core
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(o.width/2, o.height/2, 5, 0, Math.PI*2); ctx.fill();
+            
+        } else if (o.type === 'enemy_dasher') {
+            // DASHER (Blitz Bot)
+            ctx.fillStyle = o.color;
+            // Low profile body
+            ctx.beginPath();
+            ctx.moveTo(0, o.height);
+            ctx.lineTo(10, 0);
+            ctx.lineTo(o.width, 10);
+            ctx.lineTo(o.width-5, o.height);
+            ctx.fill();
+            
+            // Spikes
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(o.width, 15); ctx.lineTo(o.width + 10, 15); ctx.lineTo(o.width, 25);
+            ctx.fill();
+
+            // Wheel?
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.arc(o.width/2, o.height, 8, 0, Math.PI*2); ctx.fill();
+
         } else if (o.type === 'explosion') {
             ctx.globalAlpha = 0.7;
             ctx.fillStyle = o.color;
@@ -811,7 +1015,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                  ctx.beginPath(); ctx.arc(4,4,4,0,Math.PI*2); ctx.fill();
              } else if (o.isRocket) {
                  ctx.fillRect(0, 0, o.width, o.height);
-                 ctx.fillStyle = '#fbbf24'; ctx.fillRect(-5, 2, 5, 2); // Thrust
+                 ctx.fillStyle = '#fbbf24'; ctx.fillRect(-5, 2, 5, 2); 
              } else {
                  ctx.fillRect(0, 0, o.width, o.height);
              }
@@ -898,7 +1102,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   const progress = (stats.distanceTraveled % STAGE_LENGTH) / STAGE_LENGTH * 100;
   const currentWeapon = weapons[selectedWeaponIdx];
 
-  // Icons Helper
   const getWeaponIcon = (id: WeaponType, color: string) => {
       switch(id) {
           case 'pistol': return <Target size={20} color={color} />;
