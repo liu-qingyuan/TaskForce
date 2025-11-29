@@ -32,12 +32,17 @@ export type WeaponType = 'pistol' | 'machinegun' | 'shotgun' | 'sniper' | 'grena
 export type GameObjectType = 
   | 'player' 
   | 'bullet' 
+  | 'enemy_bullet' // NEW: Projectiles fired by enemies
   | 'enemy_ground' 
   | 'enemy_air' 
   | 'enemy_mech' 
   | 'enemy_jumper' 
   | 'enemy_seeker' 
   | 'enemy_dasher'
+  | 'enemy_archer' // NEW: Ranged attacker
+  | 'enemy_mage'   // NEW: Magic attacker
+  | 'enemy_meteor' // NEW: Falling hazard
+  | 'enemy_breaker'// NEW: Terrain destroyer
   | 'particle' 
   | 'crate' 
   | 'explosion';
@@ -66,4 +71,5 @@ export interface GameObject {
   // Visual variety & AI
   variant?: number;
   aiTimer?: number; // Used for jump cooldowns, charge states, etc.
+  aiState?: number; // 0: Idle/Move, 1: Attack, 2: Special/Summon, 3: Retreat
 }
