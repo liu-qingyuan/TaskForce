@@ -32,20 +32,23 @@ export type WeaponType = 'pistol' | 'machinegun' | 'shotgun' | 'sniper' | 'grena
 export type GameObjectType = 
   | 'player' 
   | 'bullet' 
-  | 'enemy_bullet' // NEW: Projectiles fired by enemies
+  | 'enemy_bullet' 
   | 'enemy_ground' 
   | 'enemy_air' 
   | 'enemy_mech' 
   | 'enemy_jumper' 
   | 'enemy_seeker' 
   | 'enemy_dasher'
-  | 'enemy_archer' // NEW: Ranged attacker
-  | 'enemy_mage'   // NEW: Magic attacker
-  | 'enemy_meteor' // NEW: Falling hazard
-  | 'enemy_breaker'// NEW: Terrain destroyer
+  | 'enemy_archer' 
+  | 'enemy_mage'   
+  | 'enemy_meteor' 
+  | 'enemy_breaker'
   | 'particle' 
-  | 'crate' 
-  | 'explosion';
+  | 'explosion'
+  | 'crate'            // Standard solid block
+  | 'crate_breakable'  // Destructible block
+  | 'crate_hazard'     // Spikes/Damage block
+  | 'crate_bouncy';    // Jump pad
 
 // Particle system types for the game
 export interface GameObject {

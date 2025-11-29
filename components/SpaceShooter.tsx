@@ -73,7 +73,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   const lastEnemySpawnDistRef = useRef(0);
   const lastTerrainSpawnDistRef = useRef(0);
   
-  const playerRef = useRef<GameObject & { jumps: number }>({
+  const playerRef = useRef<GameObject & { jumps: number, invulnTimer: number }>({
     id: 'player',
     x: 100, y: 0, 
     vx: 0, vy: 0,
@@ -83,7 +83,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     hp: maxHp, maxHp: maxHp,
     grounded: false,
     facing: 1,
-    jumps: 0
+    jumps: 0,
+    invulnTimer: 0
   });
 
   const objectsRef = useRef<(GameObject & { damage?: number, explosionRadius?: number })[]>([]);
@@ -161,6 +162,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         playerRef.current.vy = 0;
         playerRef.current.hp = maxHp;
         playerRef.current.jumps = 0;
+        playerRef.current.invulnTimer = 0;
     }
   };
 
@@ -248,10 +250,29 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       const y = groundLevel - (tier * TIER_HEIGHT);
       if (y < 50) return;
 
-      if (Math.random() > 0.9 && tier === 1) {
-          objectsRef.current.push({ id: `w-${Date.now()}`, x: spawnX, y: groundLevel - 200, vx: 0, vy: 0, width: 40, height: 200, color: '#1e293b', type: 'crate', hp: 999 });
+      const typeChance = Math.random();
+      let type: GameObjectType = 'crate';
+      let color = '#1e293b';
+      let hp = 999;
+      
+      // Determine Block Type
+      if (typeChance > 0.85) {
+          type = 'crate_hazard';
+          color = '#991b1b'; // Red
+      } else if (typeChance > 0.7) {
+          type = 'crate_bouncy';
+          color = '#15803d'; // Green
+      } else if (typeChance > 0.5 && tier < 4) {
+          type = 'crate_breakable';
+          color = '#1e3a8a'; // Blue
+          hp = 50;
+      }
+
+      if (Math.random() > 0.9 && tier === 1 && type === 'crate') {
+          // Tall wall
+          objectsRef.current.push({ id: `w-${Date.now()}`, x: spawnX, y: groundLevel - 200, vx: 0, vy: 0, width: 40, height: 200, color: color, type: type, hp: hp });
       } else {
-          objectsRef.current.push({ id: `t-${Date.now()}`, x: spawnX, y: y, vx: 0, vy: 0, width: width, height: height, color: '#1e293b', type: 'crate', hp: 999 });
+          objectsRef.current.push({ id: `t-${Date.now()}`, x: spawnX, y: y, vx: 0, vy: 0, width: width, height: height, color: color, type: type, hp: hp });
       }
   }
 
@@ -262,8 +283,10 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           AudioService.explosion();
           spawnParticle(target.x + target.width/2, target.y + target.height/2, target.color, 15);
           const isBoss = target.width > 100;
-          scoreRef.current += isBoss ? 5000 : (target.type === 'enemy_mech' ? 500 : 100);
-          setStats(prev => ({ ...prev, score: scoreRef.current, enemiesDefeated: prev.enemiesDefeated + 1 }));
+          if (target.type.startsWith('enemy')) {
+            scoreRef.current += isBoss ? 5000 : (target.type === 'enemy_mech' ? 500 : 100);
+            setStats(prev => ({ ...prev, score: scoreRef.current, enemiesDefeated: prev.enemiesDefeated + 1 }));
+          }
       }
   };
 
@@ -274,8 +297,10 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       spawnParticle(x, y, '#fca5a5', 8); 
       
       const explosionRect = { x: x - size/2, y: y - size/2, width: size, height: size, id: 'temp', vx:0, vy:0, color:'', type:'explosion' as const, hp: 0 };
-      objectsRef.current.filter(o => o.type.startsWith('enemy')).forEach(e => {
-          if (checkCollision(explosionRect, e)) applyDamage(e, damage);
+      objectsRef.current.forEach(e => {
+          if ((e.type.startsWith('enemy') || e.type === 'crate_breakable') && checkCollision(explosionRect, e)) {
+              applyDamage(e, damage);
+          }
       });
   }
 
@@ -321,6 +346,9 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     frameCountRef.current++;
     const groundLevel = canvas.height - 50;
     const player = playerRef.current;
+    
+    // Decrement Invulnerability
+    if (player.invulnTimer > 0) player.invulnTimer--;
 
     // --- Input & Physics Logic ---
     ['1','2','3','4','5','6','7'].forEach(key => { if (keysRef.current[key]) switchWeapon(parseInt(key)); });
@@ -335,17 +363,52 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
     if (player.y + player.height >= groundLevel) { player.y = groundLevel - player.height; player.vy = 0; player.grounded = true; player.jumps = 0; } else { player.grounded = false; }
     
-    const crates = objectsRef.current.filter(o => o.type === 'crate');
+    // Terrain / Crate Logic
+    const crates = objectsRef.current.filter(o => o.type.startsWith('crate'));
     crates.forEach(crate => {
         if (checkCollision(player, crate)) {
+            
+            // HAZARD LOGIC
+            if (crate.type === 'crate_hazard') {
+                if (player.invulnTimer <= 0) {
+                    player.hp -= 1; 
+                    AudioService.hit(); 
+                    spawnParticle(player.x, player.y, '#ef4444', 15);
+                    player.invulnTimer = 90;
+                    // Knockback
+                    player.vy = -10; 
+                    player.vx = player.x < crate.x ? -10 : 10;
+                    if(player.hp <= 0) { setGameState('gameover'); }
+                }
+                return; // Don't process collision physics if hit by hazard (or maybe knockback handles it)
+            }
+
             const overlapX = (player.width + crate.width)/2 - Math.abs((player.x + player.width/2) - (crate.x + crate.width/2));
             const overlapY = (player.height + crate.height)/2 - Math.abs((player.y + player.height/2) - (crate.y + crate.height/2));
+            
             if (overlapX < overlapY) {
+                // Horizontal Collision
                 if (player.x < crate.x) player.x = crate.x - player.width; else player.x = crate.x + crate.width;
                 player.vx = 0;
             } else {
-                if (player.y < crate.y) { player.y = crate.y - player.height; player.vy = 0; player.grounded = true; player.jumps = 0; } 
-                else { player.y = crate.y + crate.height; player.vy = 0; }
+                // Vertical Collision
+                if (player.y < crate.y) { 
+                    player.y = crate.y - player.height; 
+                    // BOUNCY LOGIC
+                    if (crate.type === 'crate_bouncy') {
+                        player.vy = -22; // Super Jump
+                        player.jumps = 1; // Allow one more jump
+                        AudioService.jump();
+                    } else {
+                        player.vy = 0; 
+                        player.grounded = true; 
+                        player.jumps = 0; 
+                    }
+                } 
+                else { 
+                    player.y = crate.y + crate.height; 
+                    player.vy = 0; 
+                }
             }
         }
     });
@@ -388,7 +451,12 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         const startY = player.y + player.height/3;
 
         if (weapon.id === 'quantum') {
-            objectsRef.current.forEach(o => { if (o.type.startsWith('enemy')) { applyDamage(o, 9999); spawnExplosion(o.x + o.width/2, o.y + o.height/2, 200, 0); } });
+            objectsRef.current.forEach(o => { 
+                if (o.type.startsWith('enemy') || o.type === 'crate_breakable') { 
+                    applyDamage(o, 9999); 
+                    spawnExplosion(o.x + o.width/2, o.y + o.height/2, 200, 0); 
+                } 
+            });
             spawnExplosion(player.x + 300, player.y, 400, 0); 
         } else {
              const createBullet = (angleOffset: number = 0) => {
@@ -409,10 +477,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
     // Object Updates
     objectsRef.current.forEach(obj => {
-         if (obj.type === 'crate') return;
+         if (obj.type.startsWith('crate')) return;
          
          // Enemy Physics & AI
-         if (obj.type.startsWith('enemy')) {
+         // FIX: Exclude enemy_bullet from standard enemy physics (gravity)
+         if (obj.type.startsWith('enemy') && obj.type !== 'enemy_bullet') {
              
              // --- BOSS AI (Restored) ---
              if (obj.type === 'enemy_mech' && obj.width > 100) {
@@ -496,7 +565,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                      obj.aiTimer = (obj.aiTimer || 0) + 1;
                      if(obj.type === 'enemy_mage' && obj.aiTimer > 150) {
                          const angle = Math.atan2((player.y+player.height/2)-obj.y, (player.x+player.width/2)-obj.x);
-                         objectsRef.current.push({id: `eb-${Date.now()}`, x:obj.x, y:obj.y, vx:Math.cos(angle)*4, vy:Math.sin(angle)*4, width:10, height:10, color:'#d8b4fe', type:'enemy_bullet', hp:1, damage:1});
+                         objectsRef.current.push({id: `eb-${Date.now()}`, x:obj.x, y:obj.y, vx:Math.cos(angle)*4, vy:Math.sin(angle)*4, width:16, height:6, color:'#d8b4fe', type:'enemy_bullet', hp:1, damage:1});
                          obj.aiTimer = 0;
                      }
                  }
@@ -514,14 +583,69 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                      obj.vx = dx > 0 ? speed : -speed;
                  } else { obj.vx = 0; }
                  
+                 // Apply X movement
                  obj.x += obj.vx;
                  
-                 // Collisions
-                 crates.forEach(c => { if(checkCollision(obj, c)) { /* Wall/Floor logic */ } }); // Simplified
+                 // Horizontal Collisions (Walls)
+                 crates.forEach(c => { 
+                     if(checkCollision(obj, c)) {
+                         // Interactive Crates
+                         if (c.type === 'crate_hazard') {
+                             applyDamage(obj, 1);
+                             obj.vx *= -1; // Bounce back
+                             obj.x += obj.vx * 2;
+                             return;
+                         }
+                         
+                         // Solid Collision
+                         if (obj.vx > 0) obj.x = c.x - obj.width;
+                         else if (obj.vx < 0) obj.x = c.x + c.width;
+                         
+                         // Turn around behavior
+                         obj.vx *= -1; 
+                         
+                         // Breaker logic: Destroy crate
+                         if (obj.type === 'enemy_breaker' && c.type === 'crate_breakable') {
+                             applyDamage(c, 10);
+                         }
+                     } 
+                 });
 
                  obj.y += obj.vy;
                  obj.grounded = false;
-                 crates.forEach(c => { if(checkCollision(obj, c) && obj.vy > 0 && obj.y < c.y) { obj.y = c.y - obj.height; obj.vy = 0; obj.grounded = true; }});
+                 
+                 // Vertical Collisions (Floors/Ceilings)
+                 crates.forEach(c => { 
+                     if(checkCollision(obj, c)) {
+                         // Hazard
+                         if (c.type === 'crate_hazard') {
+                             applyDamage(obj, 1);
+                             obj.vy = -5;
+                             return;
+                         }
+                         
+                         // Bouncy
+                         if (c.type === 'crate_bouncy' && obj.vy > 0) {
+                             obj.vy = -22;
+                             obj.y = c.y - obj.height;
+                             obj.grounded = false;
+                             return;
+                         }
+                         
+                         // Solid Floor
+                         if (obj.vy > 0 && obj.y < c.y + c.height/2) { 
+                             obj.y = c.y - obj.height; 
+                             obj.vy = 0; 
+                             obj.grounded = true; 
+                         }
+                         // Ceiling
+                         else if (obj.vy < 0) {
+                             obj.y = c.y + c.height;
+                             obj.vy = 0;
+                         }
+                     }
+                 });
+                 
                  if(obj.y + obj.height >= groundLevel) { obj.y = groundLevel - obj.height; obj.vy = 0; obj.grounded = true; }
              }
          }
@@ -542,11 +666,19 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     const bullets = objectsRef.current.filter(o => o.type === 'bullet');
     const enemies = objectsRef.current.filter(o => o.type.startsWith('enemy'));
     bullets.forEach(b => {
+        // Enemy Hit
         enemies.forEach(e => {
             if(checkCollision(b, e)) {
                 if(b.isGrenade || b.isRocket) { b.hp = 0; spawnExplosion(b.x, b.y, b.explosionRadius||150, b.damage||200); }
                 else { applyDamage(e, b.damage||1); b.hp = 0; spawnParticle(b.x, b.y, '#fff', 5); }
             }
+        });
+        // Breakable Crate Hit
+        crates.filter(c => c.type === 'crate_breakable').forEach(c => {
+             if(checkCollision(b, c)) {
+                 if(b.isGrenade || b.isRocket) { b.hp = 0; spawnExplosion(b.x, b.y, b.explosionRadius||150, b.damage||200); }
+                 else { applyDamage(c, b.damage||1); b.hp = 0; spawnParticle(b.x, b.y, c.color, 5); }
+             }
         });
         if(Math.abs(b.x - cameraRef.current) > canvas.width + 200) b.hp = 0;
     });
@@ -554,10 +686,20 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     // Player Hit
     [...enemies, ...objectsRef.current.filter(o => o.type === 'enemy_bullet')].forEach(e => {
         if(checkCollision(e, player)) {
-            player.hp -= 1; AudioService.hit(); spawnParticle(player.x, player.y, '#ef4444', 15);
-            player.vy = -6; player.vx = player.x < e.x ? -10 : 10; e.vx = -e.vx * 2;
-            if(e.type === 'enemy_bullet') e.hp = 0;
-            if(player.hp <= 0) { setGameState('gameover'); }
+            // FIX: Check invulnerability
+            if (player.invulnTimer <= 0) {
+                player.hp -= 1; 
+                AudioService.hit(); 
+                spawnParticle(player.x, player.y, '#ef4444', 15);
+                player.invulnTimer = 90; // 1.5 seconds invulnerability
+                
+                // Knockback
+                player.vy = -6; 
+                player.vx = player.x < e.x ? -10 : 10; 
+                
+                if(e.type === 'enemy_bullet') e.hp = 0;
+                if(player.hp <= 0) { setGameState('gameover'); }
+            }
         }
     });
 
@@ -650,6 +792,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         }
 
         if (o.type === 'player') {
+            // Visual Blink if Invulnerable
+            if (playerRef.current.invulnTimer > 0 && Math.floor(frameCountRef.current / 4) % 2 === 0) {
+                ctx.globalAlpha = 0.4;
+            }
+
             // Player: Futuristic Robot
             ctx.shadowColor = o.color; ctx.shadowBlur = 15;
             
@@ -681,6 +828,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             drawRoundedRect(0, -4, 30, 8, 2); // Weapon barrel
             ctx.fill();
             ctx.restore();
+            
+            ctx.globalAlpha = 1;
 
         } else if (o.type === 'enemy_ground' || o.type === 'enemy_dasher') {
              // Ground Droids
@@ -741,7 +890,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
              }
 
         } else if (o.type === 'crate') {
-            // Neon Crates
+            // Neon Crates (Solid)
             ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
             ctx.strokeStyle = '#06b6d4';
             ctx.lineWidth = 2;
@@ -754,26 +903,74 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             
             // Grid pattern inside
             ctx.fillStyle = 'rgba(6, 182, 212, 0.1)';
-            for(let i=10; i<o.width; i+=20) {
-                 ctx.fillRect(i, 0, 1, o.height);
+            for(let i=10; i<o.width; i+=20) ctx.fillRect(i, 0, 1, o.height);
+
+        } else if (o.type === 'crate_breakable') {
+            // Destructible Glass Block
+            ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 8;
+            ctx.fillStyle = `rgba(59, 130, 246, ${o.hp/50 * 0.4})`; // Fade as hp drops
+            ctx.strokeStyle = '#60a5fa';
+            ctx.lineWidth = 1;
+            drawRoundedRect(0,0,o.width,o.height, 2);
+            ctx.fill(); ctx.stroke();
+            // Data Grid
+            ctx.fillStyle = 'rgba(96, 165, 250, 0.3)';
+            for(let i=0; i<o.width; i+=15) for(let j=0; j<o.height; j+=15) ctx.fillRect(i,j,2,2);
+
+        } else if (o.type === 'crate_hazard') {
+            // Hazard Block (Spikes)
+            ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 10;
+            ctx.fillStyle = '#450a0a'; // Dark Red
+            drawRoundedRect(0,0,o.width,o.height, 4);
+            ctx.fill();
+            
+            // Spikes on top
+            ctx.fillStyle = '#ef4444';
+            for(let i=0; i<o.width; i+=20) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i+10, -10); ctx.lineTo(i+20, 0); ctx.fill();
             }
+
+        } else if (o.type === 'crate_bouncy') {
+            // Bounce Pad
+            ctx.shadowColor = '#22c55e'; ctx.shadowBlur = 10;
+            ctx.fillStyle = '#052e16'; // Dark Green
+            drawRoundedRect(0,0,o.width,o.height, 4);
+            ctx.fill();
+            
+            // Arrows
+            ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(10, o.height/2); ctx.lineTo(o.width/2, 5); ctx.lineTo(o.width-10, o.height/2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(10, o.height/2+10); ctx.lineTo(o.width/2, 15); ctx.lineTo(o.width-10, o.height/2+10); ctx.stroke();
 
         } else if (o.type === 'bullet' || o.type === 'enemy_bullet') {
              ctx.shadowColor = o.color; ctx.shadowBlur = 10;
-             ctx.fillStyle = '#ffffff';
-             ctx.beginPath(); 
-             if (o.type === 'bullet' && !o.isGrenade && !o.isRocket) {
-                 // Laser beam look
-                 drawRoundedRect(0, 0, o.width, o.height, 2);
+             
+             if (o.type === 'enemy_bullet') {
+                // FIX: Draw as a rotated projectile instead of a circle
+                ctx.save();
+                ctx.translate(o.width/2, o.height/2);
+                const angle = Math.atan2(o.vy, o.vx);
+                ctx.rotate(angle);
+                ctx.fillStyle = o.color;
+                drawRoundedRect(-6, -2, 12, 4, 2); // Capsule shape
+                ctx.fill();
+                ctx.restore();
              } else {
-                 ctx.arc(o.width/2, o.height/2, o.width/2, 0, Math.PI*2);
+                 ctx.fillStyle = '#ffffff';
+                 ctx.beginPath(); 
+                 if (o.type === 'bullet' && !o.isGrenade && !o.isRocket) {
+                     // Laser beam look
+                     drawRoundedRect(0, 0, o.width, o.height, 2);
+                 } else {
+                     ctx.arc(o.width/2, o.height/2, o.width/2, 0, Math.PI*2);
+                 }
+                 ctx.fill();
+                 // Outer glow
+                 ctx.fillStyle = o.color;
+                 ctx.globalAlpha = 0.5;
+                 ctx.beginPath(); ctx.arc(o.width/2, o.height/2, o.width, 0, Math.PI*2); ctx.fill();
+                 ctx.globalAlpha = 1;
              }
-             ctx.fill();
-             // Outer glow
-             ctx.fillStyle = o.color;
-             ctx.globalAlpha = 0.5;
-             ctx.beginPath(); ctx.arc(o.width/2, o.height/2, o.width, 0, Math.PI*2); ctx.fill();
-             ctx.globalAlpha = 1;
              
         } else if (o.type === 'explosion') {
              ctx.shadowColor = o.color; ctx.shadowBlur = 20;
