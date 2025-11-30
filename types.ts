@@ -18,6 +18,7 @@ export interface PlayerProfile {
 }
 
 export type AppMode = 'todo' | 'briefing' | 'game';
+export type GameState = 'playing' | 'gameover' | 'paused' | 'drafting';
 
 export interface GameStats {
   score: number;
@@ -75,4 +76,23 @@ export interface GameObject {
   variant?: number;
   aiTimer?: number; // Used for jump cooldowns, charge states, etc.
   aiState?: number; // 0: Idle/Move, 1: Attack, 2: Special/Summon, 3: Retreat
+}
+
+// --- CARD SYSTEM TYPES ---
+export type CardRarity = 'Common' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic';
+
+export interface PowerUpCard {
+    id: string;
+    rarity: CardRarity;
+    type: 'damage' | 'speed' | 'firerate' | 'health' | 'crit';
+    value: number; // Raw value to add/multiply
+    description: string;
+}
+
+export interface PlayerModifiers {
+    damageMult: number;
+    moveSpeedMult: number;
+    fireRateMult: number;
+    maxHpAdd: number;
+    critChance: number;
 }

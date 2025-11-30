@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GameStats, GameObject, PlayerProfile, WeaponType, GameObjectType } from '../types';
-import { ArrowLeft, RefreshCw, Zap, Shield, Crosshair, Target, Bomb, Skull, Settings, Flame, Atom, Cpu } from 'lucide-react';
+import { GameStats, GameObject, PlayerProfile, WeaponType, GameObjectType, GameState, CardRarity, PowerUpCard, PlayerModifiers } from '../types';
+import { ArrowLeft, RefreshCw, Zap, Shield, Crosshair, Target, Bomb, Skull, Settings, Flame, Atom, Cpu, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Dna } from 'lucide-react';
 import { AudioService } from '../services/audio';
 
 interface RunAndGunProps {
@@ -31,9 +31,17 @@ const DEFAULT_WEAPONS: Record<number, WeaponConfig> = {
     7: { id: 'quantum', name: 'Quantum', cooldown: 5000, color: '#8b5cf6', damage: 1000, speed: 0, explosionRadius: 9999, projectileCount: 0 }
 };
 
+const RARITY_COLORS: Record<CardRarity, string> = {
+    Common: '#94a3b8',   // Slate
+    Rare: '#3b82f6',     // Blue
+    Epic: '#a855f7',     // Purple
+    Legendary: '#eab308', // Gold
+    Mythic: '#f43f5e'    // Rose/Red/Holographic
+};
+
 const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, playerProfile }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<'playing' | 'gameover' | 'paused'>('playing');
+  const [gameState, setGameState] = useState<GameState>('playing');
   const [stats, setStats] = useState<GameStats>({ score: 0, highScore: 0, enemiesDefeated: 0, distanceTraveled: 0, currentStage: 1 });
   const [selectedWeaponIdx, setSelectedWeaponIdx] = useState<number>(1);
   const [weapons, setWeapons] = useState(DEFAULT_WEAPONS);
@@ -42,16 +50,24 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   const [showLevelUp, setShowLevelUp] = useState<boolean>(false);
   const [bossWarning, setBossWarning] = useState<boolean>(false);
   
+  // Card Drafting State
+  const [draftCards, setDraftCards] = useState<PowerUpCard[]>([]);
+  const [modifiers, setModifiers] = useState<PlayerModifiers>({ damageMult: 1, moveSpeedMult: 1, fireRateMult: 1, maxHpAdd: 0, critChance: 0 });
+  const modifiersRef = useRef<PlayerModifiers>({ damageMult: 1, moveSpeedMult: 1, fireRateMult: 1, maxHpAdd: 0, critChance: 0 });
+
   // Auto Fire State
   const [autoFire, setAutoFire] = useState(false);
   const autoFireRef = useRef(false);
   
-  const maxHp = playerProfile.level >= 3 ? 5 : 3;
+  // Touch Control State for UI Feedback
+  const [touchState, setTouchState] = useState({ left: false, right: false, jump: false, fire: false });
+  
+  const baseMaxHp = playerProfile.level >= 3 ? 5 : 3;
 
   // Game Physics Constants
   const GRAVITY = 0.6;
   const JUMP_FORCE = -14;
-  const MOVE_SPEED = 6;
+  const BASE_MOVE_SPEED = 6;
   const FRICTION = 0.8;
   const STAGE_LENGTH = 300; 
   const DOUBLE_JUMP_FORCE = -12;
@@ -68,6 +84,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   const stageRef = useRef(1);
   const mouseRef = useRef({ x: 0, y: 0 });
   const bossSpawnedRef = useRef(0);
+  const lastUiUpdateRef = useRef(0);
   
   // Spawning Refs
   const lastEnemySpawnDistRef = useRef(0);
@@ -80,7 +97,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     width: 40, height: 60,
     color: '#38bdf8', 
     type: 'player', 
-    hp: maxHp, maxHp: maxHp,
+    hp: baseMaxHp, maxHp: baseMaxHp,
     grounded: false,
     facing: 1,
     jumps: 0,
@@ -140,6 +157,75 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const generateCards = () => {
+      const cards: PowerUpCard[] = [];
+      const types = ['damage', 'speed', 'firerate', 'health', 'crit'] as const;
+      
+      for(let i=0; i<5; i++) {
+          const r = Math.random();
+          let rarity: CardRarity = 'Common';
+          let multiplier = 1;
+          
+          // Probabilities: Mythic 5%, Legendary 15%, Epic 20%, Rare 25%, Common 35%
+          // Accumulated: 0.05, 0.20, 0.40, 0.65, 1.00
+          if (r < 0.05) { rarity = 'Mythic'; multiplier = 50; }
+          else if (r < 0.20) { rarity = 'Legendary'; multiplier = 10; }
+          else if (r < 0.40) { rarity = 'Epic'; multiplier = 5; }
+          else if (r < 0.65) { rarity = 'Rare'; multiplier = 1.5; }
+          else { rarity = 'Common'; multiplier = 1.0; }
+
+          const type = types[Math.floor(Math.random() * types.length)];
+          let desc = "";
+          let value = 0;
+
+          // Base Values multiplied by Rarity Multiplier
+          if (type === 'damage') {
+              value = 0.10 * multiplier; // Base 10%
+              desc = `+${Math.round(value * 100)}% Damage`;
+          } else if (type === 'speed') {
+              value = 0.05 * multiplier; // Base 5%
+              desc = `+${Math.round(value * 100)}% Move Speed`;
+          } else if (type === 'firerate') {
+              value = 0.10 * multiplier; // Base 10%
+              desc = `+${Math.round(value * 100)}% Fire Rate`;
+          } else if (type === 'health') {
+              value = Math.max(1, Math.round(1 * multiplier)); // Base 1 HP
+              desc = `+${value} Max HP`;
+          } else if (type === 'crit') {
+              value = 0.01 * multiplier; // Base 1%
+              desc = `+${Math.round(value * 100)}% Crit Chance`;
+          }
+
+          cards.push({
+              id: `card-${Date.now()}-${i}`,
+              rarity,
+              type,
+              value,
+              description: desc
+          });
+      }
+      setDraftCards(cards);
+  };
+
+  const handleSelectCard = (card: PowerUpCard) => {
+      setModifiers(prev => {
+          const next = { ...prev };
+          if (card.type === 'damage') next.damageMult += card.value;
+          if (card.type === 'speed') next.moveSpeedMult += card.value;
+          if (card.type === 'firerate') next.fireRateMult += card.value;
+          if (card.type === 'health') {
+              next.maxHpAdd += card.value;
+              playerRef.current.maxHp = baseMaxHp + next.maxHpAdd;
+              playerRef.current.hp += card.value; // Heal for the amount gained
+          }
+          if (card.type === 'crit') next.critChance += card.value;
+          
+          modifiersRef.current = next; // Sync ref for loop
+          return next;
+      });
+      setGameState('playing');
+  };
+
   const resetGame = () => {
     scoreRef.current = 0;
     cameraRef.current = 0;
@@ -152,6 +238,10 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     setGameState('playing');
     setStats({ score: 0, highScore: stats.highScore, enemiesDefeated: 0, distanceTraveled: 0, currentStage: 1 });
     
+    // Reset Modifiers
+    modifiersRef.current = { damageMult: 1, moveSpeedMult: 1, fireRateMult: 1, maxHpAdd: 0, critChance: 0 };
+    setModifiers(modifiersRef.current);
+
     autoFireRef.current = false;
     setAutoFire(false);
     
@@ -160,7 +250,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         playerRef.current.y = canvasRef.current.height - 200;
         playerRef.current.vx = 0;
         playerRef.current.vy = 0;
-        playerRef.current.hp = maxHp;
+        playerRef.current.hp = baseMaxHp;
+        playerRef.current.maxHp = baseMaxHp;
         playerRef.current.jumps = 0;
         playerRef.current.invulnTimer = 0;
     }
@@ -285,7 +376,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           const isBoss = target.width > 100;
           if (target.type.startsWith('enemy')) {
             scoreRef.current += isBoss ? 5000 : (target.type === 'enemy_mech' ? 500 : 100);
-            setStats(prev => ({ ...prev, score: scoreRef.current, enemiesDefeated: prev.enemiesDefeated + 1 }));
+            // NOTE: We do NOT call setStats here to avoid spamming React updates. Stats are updated in the UI sync loop.
           }
       }
   };
@@ -331,6 +422,28 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       const val = parseFloat(e.target.value);
       setWeapons(prev => ({ ...prev, [editingWeapon]: { ...prev[editingWeapon], [field]: val } }));
   };
+  
+  // --- TOUCH CONTROL HANDLERS ---
+  const handleTouchStart = (action: string) => {
+      keysRef.current[action] = true;
+      if (action === 'click') setTouchState(prev => ({...prev, fire: true}));
+      if (action === 'ArrowUp') setTouchState(prev => ({...prev, jump: true}));
+      if (action === 'ArrowLeft') setTouchState(prev => ({...prev, left: true}));
+      if (action === 'ArrowRight') setTouchState(prev => ({...prev, right: true}));
+      
+      if (action === 'ArrowUp' && gameState === 'playing') {
+          const player = playerRef.current;
+           if (player.grounded) { player.vy = JUMP_FORCE; player.grounded = false; player.jumps = 1; AudioService.jump(); } 
+           else if (player.jumps < 2) { player.vy = DOUBLE_JUMP_FORCE; player.jumps = 2; AudioService.jump(); }
+      }
+  };
+  const handleTouchEnd = (action: string) => {
+      keysRef.current[action] = false;
+      if (action === 'click') setTouchState(prev => ({...prev, fire: false}));
+      if (action === 'ArrowUp') setTouchState(prev => ({...prev, jump: false}));
+      if (action === 'ArrowLeft') setTouchState(prev => ({...prev, left: false}));
+      if (action === 'ArrowRight') setTouchState(prev => ({...prev, right: false}));
+  };
 
   // -----------------------------------------------------------------------------------------
   // GAME LOOP
@@ -346,6 +459,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     frameCountRef.current++;
     const groundLevel = canvas.height - 50;
     const player = playerRef.current;
+    const mods = modifiersRef.current;
     
     // Decrement Invulnerability
     if (player.invulnTimer > 0) player.invulnTimer--;
@@ -353,10 +467,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     // --- Input & Physics Logic ---
     ['1','2','3','4','5','6','7'].forEach(key => { if (keysRef.current[key]) switchWeapon(parseInt(key)); });
 
+    const moveSpeed = BASE_MOVE_SPEED * mods.moveSpeedMult;
     if (keysRef.current['ArrowRight'] || keysRef.current['d']) { player.vx += 1; player.facing = 1; } 
     else if (keysRef.current['ArrowLeft'] || keysRef.current['a']) { player.vx -= 1; player.facing = -1; } 
     else { player.vx *= FRICTION; }
-    player.vx = Math.max(-MOVE_SPEED, Math.min(MOVE_SPEED, player.vx));
+    player.vx = Math.max(-moveSpeed, Math.min(moveSpeed, player.vx));
     player.vy += GRAVITY;
     player.x += player.vx;
     player.y += player.vy;
@@ -413,9 +528,9 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         }
     });
 
-    // Camera
-    const targetCamX = player.x - 300; 
-    cameraRef.current += (targetCamX - cameraRef.current) * 0.1;
+    // Camera (OPTIMIZATION: Smooth Lookahead)
+    const targetCamX = (player.x - 300) + (player.vx * 20); // Look ahead based on speed
+    cameraRef.current += (targetCamX - cameraRef.current) * 0.08; // Smooth interpolation
     if (cameraRef.current < 0) cameraRef.current = 0;
     if (player.x < cameraRef.current) player.x = cameraRef.current;
 
@@ -425,10 +540,13 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     if (calculatedStage > stageRef.current) {
         stageRef.current = calculatedStage;
         setShowLevelUp(true);
-        setTimeout(() => setShowLevelUp(false), 3000);
+        // TRIGGER DRAFT MODE
+        generateCards();
+        setGameState('drafting');
+        
         bossSpawnedRef.current = 0;
     }
-    if (stageRef.current % 2 === 0 && bossSpawnedRef.current !== stageRef.current) {
+    if (stageRef.current % 2 === 0 && bossSpawnedRef.current !== stageRef.current && gameState === 'playing') {
         spawnBoss(canvas.width, stageRef.current);
         bossSpawnedRef.current = stageRef.current;
     }
@@ -442,13 +560,38 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     const weapon = weapons[selectedWeaponIdx];
     const now = Date.now();
     const isFiring = keysRef.current['f'] || keysRef.current['Enter'] || keysRef.current['click'] || autoFireRef.current;
-    if (isFiring && now - lastShotTimeRef.current > weapon.cooldown) {
+    
+    // Apply Cooldown Modifier (Fire Rate)
+    // Higher fireRateMult = Lower Cooldown
+    const effectiveCooldown = weapon.cooldown / mods.fireRateMult;
+    
+    if (isFiring && now - lastShotTimeRef.current > effectiveCooldown) {
         AudioService.shoot(weapon.id);
         const playerScreenX = player.x - cameraRef.current + player.width/2;
         const playerScreenY = player.y + player.height/3;
-        const angle = Math.atan2(mouseRef.current.y - playerScreenY, mouseRef.current.x - playerScreenX);
+        
+        // Auto-aim if auto-firing, else use mouse/last input
+        let targetX = mouseRef.current.x;
+        let targetY = mouseRef.current.y;
+        
+        // If firing with touch, aim straight ahead or towards nearest enemy
+        if (keysRef.current['click'] && !mouseRef.current.x) {
+             targetX = playerScreenX + (player.facing === 1 ? 500 : -500);
+             targetY = playerScreenY;
+        }
+
+        const angle = Math.atan2(targetY - playerScreenY, targetX - playerScreenX);
         const startX = player.x + player.width/2;
         const startY = player.y + player.height/3;
+
+        // Apply Damage Modifier
+        let effectiveDamage = weapon.damage * mods.damageMult;
+        
+        // Critical Hit Logic
+        if (Math.random() < mods.critChance) {
+            effectiveDamage *= 2; // Crits do 2x damage
+            // Ideally we'd show a "CRIT" text here but that's complex in canvas without a text manager
+        }
 
         if (weapon.id === 'quantum') {
             objectsRef.current.forEach(o => { 
@@ -465,7 +608,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                     id: `b-${now}-${Math.random()}`, x: startX + Math.cos(finalAngle)*30, y: startY + Math.sin(finalAngle)*30,
                     vx: Math.cos(finalAngle) * weapon.speed, vy: Math.sin(finalAngle) * weapon.speed,
                     width: (weapon.id === 'grenade' || weapon.id === 'rocket') ? 12 : 8, height: (weapon.id === 'grenade' || weapon.id === 'rocket') ? 12 : 4,
-                    color: weapon.color, type: 'bullet', hp: 1, damage: weapon.damage, explosionRadius: weapon.explosionRadius, isGrenade: weapon.id === 'grenade', isRocket: weapon.id === 'rocket'
+                    color: weapon.color, type: 'bullet', hp: 1, damage: effectiveDamage, explosionRadius: weapon.explosionRadius, isGrenade: weapon.id === 'grenade', isRocket: weapon.id === 'rocket'
                 });
             };
             const count = weapon.projectileCount || 1;
@@ -704,7 +847,13 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     });
 
     objectsRef.current = objectsRef.current.filter(o => o.hp > 0 && o.x > cameraRef.current - 400 && o.x < cameraRef.current + canvas.width + 400);
-    setStats(prev => ({...prev, distanceTraveled: distanceRef.current, currentStage: stageRef.current }));
+    
+    // OPTIMIZATION: Throttle React UI Updates
+    const nowUi = Date.now();
+    if (nowUi - lastUiUpdateRef.current > 100) { // Update UI every 100ms
+        setStats(prev => ({...prev, distanceTraveled: distanceRef.current, currentStage: stageRef.current }));
+        lastUiUpdateRef.current = nowUi;
+    }
 
     // -------------------------------------------------------------------------------------
     // RENDER START
@@ -819,7 +968,15 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             ctx.save();
             ctx.translate(o.width/2, o.height/2);
             const playerScreenCenter = { x: screenX + o.width/2, y: screenY + o.height/2 };
-            const aimAngle = Math.atan2(mouseRef.current.y - playerScreenCenter.y, mouseRef.current.x - playerScreenCenter.x);
+            // Auto aim logic for visuals
+            let targetX = mouseRef.current.x;
+            let targetY = mouseRef.current.y;
+            if (keysRef.current['click'] && !mouseRef.current.x) {
+                targetX = playerScreenCenter.x + (o.facing === 1 ? 500 : -500);
+                targetY = playerScreenCenter.y;
+            }
+
+            const aimAngle = Math.atan2(targetY - playerScreenCenter.y, targetX - playerScreenCenter.x);
             let rotation = aimAngle;
             if (o.facing === -1) rotation = Math.PI - aimAngle; 
             ctx.rotate(rotation);
@@ -994,10 +1151,12 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     });
 
     // Crosshair
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(mouseRef.current.x, mouseRef.current.y, 8, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = '#06b6d4'; ctx.beginPath(); ctx.arc(mouseRef.current.x, mouseRef.current.y, 2, 0, Math.PI*2); ctx.fill();
+    if (mouseRef.current.x !== 0) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(mouseRef.current.x, mouseRef.current.y, 8, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = '#06b6d4'; ctx.beginPath(); ctx.arc(mouseRef.current.x, mouseRef.current.y, 2, 0, Math.PI*2); ctx.fill();
+    }
 
     requestRef.current = requestAnimationFrame(loop);
   }, [gameState, selectedWeaponIdx, weapons]); // Dependencies
@@ -1043,7 +1202,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   }
 
   return (
-    <div className="fixed inset-0 w-full h-full bg-slate-950 overflow-hidden cursor-none font-sans">
+    <div className="fixed inset-0 w-full h-full bg-slate-950 overflow-hidden font-sans touch-none select-none">
       <canvas ref={canvasRef} className="block w-full h-full" />
 
       {/* --- UI OVERLAYS (Apple Style Glassmorphism) --- */}
@@ -1067,7 +1226,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       )}
 
       {/* Top Left HUD - Floating Glass Island */}
-      <div className="absolute top-6 left-6 flex flex-col gap-4 pointer-events-none z-10">
+      <div className="absolute top-6 left-6 flex flex-col gap-4 pointer-events-none z-10 hidden md:flex">
             <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-4 rounded-3xl shadow-2xl max-w-sm">
                 <p className="text-[10px] uppercase tracking-widest text-cyan-400/80 mb-1 font-bold">Current Objective</p>
                 <p className="text-sm font-medium text-white/90 leading-relaxed">{missionBriefing}</p>
@@ -1085,7 +1244,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
             {/* Health Pips */}
             <div className="flex gap-1.5 pl-2">
-                 {[...Array(maxHp)].map((_, i) => (
+                 {[...Array(playerRef.current.maxHp || baseMaxHp)].map((_, i) => (
                     <div 
                         key={i} 
                         className={`w-8 h-2 rounded-full transition-all duration-300 ${
@@ -1098,8 +1257,18 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             </div>
       </div>
       
+      {/* Mobile Simplified HUD */}
+      <div className="absolute top-4 left-4 right-4 flex justify-between md:hidden pointer-events-none">
+           <div className="flex gap-1">
+                {[...Array(playerRef.current.maxHp || baseMaxHp)].map((_, i) => (
+                    <div key={i} className={`w-6 h-1.5 rounded-full ${i < playerRef.current.hp ? 'bg-green-500' : 'bg-white/10'}`} />
+                ))}
+           </div>
+           <div className="text-xs font-mono text-cyan-400">{stats.score}</div>
+      </div>
+      
       {/* Auto Fire Indicator */}
-      <div className="absolute bottom-10 left-10 pointer-events-none">
+      <div className="absolute bottom-32 left-8 md:bottom-10 md:left-10 pointer-events-none">
           <div className={`
               flex items-center gap-3 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300
               ${autoFire 
@@ -1107,13 +1276,53 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                 : 'bg-white/5 border-white/5 text-slate-400'}
           `}>
               <Cpu size={16} />
-              <span className="text-xs font-bold tracking-widest">AUTO-FIRE [J]</span>
+              <span className="text-xs font-bold tracking-widest hidden md:inline">AUTO-FIRE [J]</span>
+              <span className="text-xs font-bold tracking-widest md:hidden">AUTO</span>
               <div className={`w-2 h-2 rounded-full ${autoFire ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`}></div>
+          </div>
+      </div>
+      
+      {/* TOUCH CONTROLS (Mobile/Tablet Only) */}
+      <div className="absolute inset-0 pointer-events-none md:hidden z-30">
+          {/* Left Joystick Area */}
+          <div className="absolute bottom-8 left-8 flex items-center gap-4 pointer-events-auto">
+             <button 
+                className={`w-16 h-16 rounded-full backdrop-blur-xl border border-white/20 flex items-center justify-center transition-all active:scale-95 active:bg-white/20 ${touchState.left ? 'bg-white/20 scale-95' : 'bg-white/5'}`}
+                onTouchStart={() => handleTouchStart('ArrowLeft')}
+                onTouchEnd={() => handleTouchEnd('ArrowLeft')}
+             >
+                 <ChevronLeft size={32} className="text-white/80" />
+             </button>
+             <button 
+                className={`w-16 h-16 rounded-full backdrop-blur-xl border border-white/20 flex items-center justify-center transition-all active:scale-95 active:bg-white/20 ${touchState.right ? 'bg-white/20 scale-95' : 'bg-white/5'}`}
+                onTouchStart={() => handleTouchStart('ArrowRight')}
+                onTouchEnd={() => handleTouchEnd('ArrowRight')}
+             >
+                 <ChevronRight size={32} className="text-white/80" />
+             </button>
+          </div>
+
+          {/* Right Action Buttons */}
+          <div className="absolute bottom-8 right-8 flex items-center gap-4 pointer-events-auto">
+             <button 
+                className={`w-16 h-16 rounded-full backdrop-blur-xl border border-emerald-500/30 flex items-center justify-center transition-all active:scale-95 active:bg-emerald-500/20 ${touchState.jump ? 'bg-emerald-500/20 scale-95' : 'bg-emerald-900/20'}`}
+                onTouchStart={() => handleTouchStart('ArrowUp')}
+                onTouchEnd={() => handleTouchEnd('ArrowUp')}
+             >
+                 <ChevronUp size={32} className="text-emerald-400" />
+             </button>
+             <button 
+                className={`w-20 h-20 rounded-full backdrop-blur-xl border border-red-500/30 flex items-center justify-center transition-all active:scale-95 active:bg-red-500/20 ${touchState.fire ? 'bg-red-500/20 scale-95' : 'bg-red-900/20'}`}
+                onTouchStart={() => handleTouchStart('click')}
+                onTouchEnd={() => handleTouchEnd('click')}
+             >
+                 <Target size={32} className="text-red-400" />
+             </button>
           </div>
       </div>
 
       {/* Top Right: Weapon Dock (iOS Style) */}
-      <div className="absolute top-6 right-6 p-2 bg-slate-900/40 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl flex gap-3 pointer-events-auto z-20">
+      <div className="absolute top-16 right-4 md:top-6 md:right-6 p-2 bg-slate-900/40 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl flex flex-col md:flex-row gap-2 md:gap-3 pointer-events-auto z-20 scale-75 md:scale-100 origin-top-right">
         {Object.keys(weapons).map((keyStr) => {
             const num = parseInt(keyStr);
             const w = weapons[num];
@@ -1130,7 +1339,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                         `}
                     >
                         {getWeaponIcon(w.id, w.color)}
-                        <span className="absolute -bottom-4 text-[9px] font-bold text-white/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="absolute -bottom-4 text-[9px] font-bold text-white/40 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block">
                             {num}
                         </span>
                     </button>
@@ -1144,8 +1353,61 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         })}
       </div>
 
+      {/* DRAFTING MODAL */}
+      {gameState === 'drafting' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-lg z-50 p-6 animate-in fade-in duration-300">
+              <div className="max-w-5xl w-full">
+                   <h2 className="text-center text-5xl font-black text-transparent bg-clip-text bg-gradient-to-br from-cyan-400 to-blue-600 mb-2 uppercase tracking-tighter drop-shadow-2xl">
+                       Sector Cleared
+                   </h2>
+                   <p className="text-center text-slate-400 font-medium tracking-[0.3em] uppercase mb-12">
+                       Select Augmentation
+                   </p>
+
+                   <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                       {draftCards.map((card, idx) => (
+                           <button
+                               key={card.id}
+                               onClick={() => handleSelectCard(card)}
+                               className="relative group bg-slate-900/60 border border-white/10 rounded-3xl p-6 h-80 flex flex-col items-center text-center transition-all hover:scale-105 hover:-translate-y-2 hover:bg-slate-800 hover:shadow-2xl"
+                               style={{ animationDelay: `${idx * 100}ms` }}
+                           >
+                               {/* Rarity Glow */}
+                               <div 
+                                    className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl"
+                                    style={{ backgroundColor: RARITY_COLORS[card.rarity] + '33' }}
+                               />
+                               
+                               <div className="relative z-10 w-full flex-grow flex flex-col items-center">
+                                   <div 
+                                        className="text-xs font-bold uppercase tracking-widest mb-4 px-3 py-1 rounded-full border border-white/10"
+                                        style={{ color: RARITY_COLORS[card.rarity], borderColor: RARITY_COLORS[card.rarity] + '44', backgroundColor: RARITY_COLORS[card.rarity] + '11' }}
+                                   >
+                                       {card.rarity}
+                                   </div>
+
+                                   <div className="my-auto">
+                                       {card.type === 'damage' && <Target size={48} color={RARITY_COLORS[card.rarity]} />}
+                                       {card.type === 'speed' && <Zap size={48} color={RARITY_COLORS[card.rarity]} />}
+                                       {card.type === 'firerate' && <RefreshCw size={48} color={RARITY_COLORS[card.rarity]} />}
+                                       {card.type === 'health' && <Dna size={48} color={RARITY_COLORS[card.rarity]} />}
+                                       {card.type === 'crit' && <Skull size={48} color={RARITY_COLORS[card.rarity]} />}
+                                   </div>
+
+                                   <h3 className="text-xl font-bold text-white mt-6 mb-2">{card.description}</h3>
+                                   <p className="text-xs text-slate-500 uppercase font-semibold">
+                                       {card.type} Upgrade
+                                   </p>
+                               </div>
+                           </button>
+                       ))}
+                   </div>
+              </div>
+          </div>
+      )}
+
       {/* Score */}
-      <div className="absolute bottom-10 right-10 pointer-events-none">
+      <div className="absolute bottom-32 right-10 md:bottom-10 md:right-10 pointer-events-none hidden md:block">
           <div className="text-7xl font-bold text-white/5 tracking-tighter select-none">
                 {stats.score.toString().padStart(6, '0')}
           </div>
@@ -1153,8 +1415,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
       {/* Settings Modal (iOS Sheet) */}
       {editingWeapon !== null && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-              <div className="bg-slate-900/90 border border-white/10 p-8 rounded-[2rem] w-[28rem] shadow-2xl animate-in zoom-in-95 duration-300 backdrop-blur-xl">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="bg-slate-900/90 border border-white/10 p-6 md:p-8 rounded-[2rem] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-300 backdrop-blur-xl">
                   <div className="flex justify-between items-center mb-8">
                       <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center">
@@ -1195,17 +1457,17 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
       {/* Game Over Screen */}
       {gameState === 'gameover' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md z-50 cursor-auto">
-          <div className="text-center p-10 max-w-lg w-full animate-in slide-in-from-bottom-10 fade-in duration-500">
-            <h2 className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-900 mb-2 tracking-tighter drop-shadow-2xl">MIA</h2>
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md z-50 cursor-auto p-4">
+          <div className="text-center p-6 md:p-10 max-w-lg w-full animate-in slide-in-from-bottom-10 fade-in duration-500 bg-slate-900/50 rounded-3xl border border-white/5 shadow-2xl">
+            <h2 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-900 mb-2 tracking-tighter drop-shadow-2xl">MIA</h2>
             <p className="text-xl text-red-200/50 font-medium tracking-[0.5em] uppercase mb-12">Mission Failed</p>
             
             <div className="grid grid-cols-2 gap-4 mb-10">
-                <div className="bg-white/5 border border-white/5 p-6 rounded-3xl backdrop-blur-lg">
+                <div className="bg-white/5 border border-white/5 p-4 rounded-3xl backdrop-blur-lg">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Sector Reached</p>
                     <p className="text-3xl font-bold text-white">{stats.currentStage}</p>
                 </div>
-                 <div className="bg-white/5 border border-white/5 p-6 rounded-3xl backdrop-blur-lg">
+                 <div className="bg-white/5 border border-white/5 p-4 rounded-3xl backdrop-blur-lg">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Hostiles Neutralized</p>
                     <p className="text-3xl font-bold text-white">{stats.enemiesDefeated}</p>
                 </div>
@@ -1233,7 +1495,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
        <button 
           onClick={onExit}
-          className="absolute bottom-8 left-8 w-12 h-12 flex items-center justify-center bg-white/5 hover:bg-red-500/20 text-white/20 hover:text-red-400 rounded-full transition-all pointer-events-auto z-40 backdrop-blur border border-white/5"
+          className="absolute top-6 left-6 md:top-auto md:bottom-8 md:left-8 w-12 h-12 flex items-center justify-center bg-white/5 hover:bg-red-500/20 text-white/20 hover:text-red-400 rounded-full transition-all pointer-events-auto z-40 backdrop-blur border border-white/5 md:block hidden"
         >
           <ArrowLeft size={20} />
       </button>
