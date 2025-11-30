@@ -36,7 +36,7 @@ const RARITY_COLORS: Record<CardRarity, string> = {
     Rare: '#3b82f6',     // Blue
     Epic: '#a855f7',     // Purple
     Legendary: '#eab308', // Gold
-    Mythic: '#f43f5e'    // Rose/Red/Holographic
+    Mythic: '#f43f5e'    // Rose base, but will use gradient in UI
 };
 
 const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, playerProfile }) => {
@@ -115,7 +115,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     const saved = localStorage.getItem('tf_highscore_platformer');
     if (saved) setStats(s => ({ ...s, highScore: parseInt(saved, 10) }));
 
-    // Generate background stars
     const stars = [];
     for(let i=0; i<100; i++) {
         stars.push({
@@ -143,7 +142,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // One-time Initialization
   useEffect(() => {
       resetGame();
       const handleResize = () => {
@@ -166,8 +164,13 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           let rarity: CardRarity = 'Common';
           let multiplier = 1;
           
-          // Probabilities: Mythic 5%, Legendary 15%, Epic 20%, Rare 25%, Common 35%
-          // Accumulated: 0.05, 0.20, 0.40, 0.65, 1.00
+          // Probabilities: 
+          // Mythic 5% (0.00 - 0.05)
+          // Legendary 15% (0.05 - 0.20)
+          // Epic 20% (0.20 - 0.40)
+          // Rare 25% (0.40 - 0.65)
+          // Common 35% (0.65 - 1.00)
+          
           if (r < 0.05) { rarity = 'Mythic'; multiplier = 50; }
           else if (r < 0.20) { rarity = 'Legendary'; multiplier = 10; }
           else if (r < 0.40) { rarity = 'Epic'; multiplier = 5; }
@@ -178,22 +181,21 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           let desc = "";
           let value = 0;
 
-          // Base Values multiplied by Rarity Multiplier
           if (type === 'damage') {
-              value = 0.10 * multiplier; // Base 10%
+              value = 0.10 * multiplier;
               desc = `+${Math.round(value * 100)}% Damage`;
           } else if (type === 'speed') {
-              value = 0.05 * multiplier; // Base 5%
-              desc = `+${Math.round(value * 100)}% Move Speed`;
+              value = 0.05 * multiplier;
+              desc = `+${Math.round(value * 100)}% Speed`;
           } else if (type === 'firerate') {
-              value = 0.10 * multiplier; // Base 10%
+              value = 0.10 * multiplier;
               desc = `+${Math.round(value * 100)}% Fire Rate`;
           } else if (type === 'health') {
-              value = Math.max(1, Math.round(1 * multiplier)); // Base 1 HP
+              value = Math.max(1, Math.round(1 * multiplier));
               desc = `+${value} Max HP`;
           } else if (type === 'crit') {
-              value = 0.01 * multiplier; // Base 1%
-              desc = `+${Math.round(value * 100)}% Crit Chance`;
+              value = 0.01 * multiplier;
+              desc = `+${Math.round(value * 100)}% Crit`;
           }
 
           cards.push({
@@ -216,11 +218,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           if (card.type === 'health') {
               next.maxHpAdd += card.value;
               playerRef.current.maxHp = baseMaxHp + next.maxHpAdd;
-              playerRef.current.hp += card.value; // Heal for the amount gained
+              playerRef.current.hp += card.value; 
           }
           if (card.type === 'crit') next.critChance += card.value;
           
-          modifiersRef.current = next; // Sync ref for loop
+          modifiersRef.current = next;
           return next;
       });
       setGameState('playing');
@@ -238,7 +240,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     setGameState('playing');
     setStats({ score: 0, highScore: stats.highScore, enemiesDefeated: 0, distanceTraveled: 0, currentStage: 1 });
     
-    // Reset Modifiers
     modifiersRef.current = { damageMult: 1, moveSpeedMult: 1, fireRateMult: 1, maxHpAdd: 0, critChance: 0 };
     setModifiers(modifiersRef.current);
 
@@ -303,8 +304,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     
     const variant = Math.floor(Math.random() * 3);
     const id = `e-${Date.now()}-${Math.random()}`;
-
-    // Common props
     const defaults = { x: spawnX, vx: 0, vy: 0, facing: -1 as 1 | -1, variant, aiTimer: 0, aiState: 0 };
 
     if (enemyType === 'enemy_meteor') {
@@ -320,7 +319,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     } else if (enemyType === 'enemy_seeker') {
         objectsRef.current.push({ ...defaults, id, y: overrideY ?? (Math.random() * (canvasRef.current!.height - 200) + 50), vx: -2, width: 30, height: 30, color: '#d946ef', type: 'enemy_seeker', hp: 20+(stage*10), maxHp: 20+(stage*10) });
     } else if (enemyType === 'enemy_mech') {
-         // Non-boss mech
          objectsRef.current.push({ ...defaults, id, y: overrideY ?? 0, vx: -1, width: 70, height: 90, color: '#6366f1', type: 'enemy_mech', hp: 200+(stage*50), maxHp: 200+(stage*50), grounded: false });
     } else if (enemyType === 'enemy_jumper') {
         objectsRef.current.push({ ...defaults, id, y: overrideY ?? 0, vx: -2, width: 35, height: 40, color: '#84cc16', type: 'enemy_jumper', hp: 40+(stage*10), maxHp: 40+(stage*10), grounded: false });
@@ -336,7 +334,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       const r = Math.random();
       let tier = 1;
       if (r > 0.9) tier = 5; else if (r > 0.75) tier = 4; else if (r > 0.55) tier = 3; else if (r > 0.3) tier = 2;
-      const width = 150 + Math.random() * 200;
+      const width = 120 + Math.random() * 150;
       const height = PLATFORM_THICKNESS; 
       const y = groundLevel - (tier * TIER_HEIGHT);
       if (y < 50) return;
@@ -346,21 +344,19 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       let color = '#1e293b';
       let hp = 999;
       
-      // Determine Block Type
       if (typeChance > 0.85) {
           type = 'crate_hazard';
-          color = '#991b1b'; // Red
+          color = '#991b1b'; 
       } else if (typeChance > 0.7) {
           type = 'crate_bouncy';
-          color = '#15803d'; // Green
+          color = '#15803d'; 
       } else if (typeChance > 0.5 && tier < 4) {
           type = 'crate_breakable';
-          color = '#1e3a8a'; // Blue
+          color = '#1e3a8a'; 
           hp = 50;
       }
 
       if (Math.random() > 0.9 && tier === 1 && type === 'crate') {
-          // Tall wall
           objectsRef.current.push({ id: `w-${Date.now()}`, x: spawnX, y: groundLevel - 200, vx: 0, vy: 0, width: 40, height: 200, color: color, type: type, hp: hp });
       } else {
           objectsRef.current.push({ id: `t-${Date.now()}`, x: spawnX, y: y, vx: 0, vy: 0, width: width, height: height, color: color, type: type, hp: hp });
@@ -376,7 +372,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           const isBoss = target.width > 100;
           if (target.type.startsWith('enemy')) {
             scoreRef.current += isBoss ? 5000 : (target.type === 'enemy_mech' ? 500 : 100);
-            // NOTE: We do NOT call setStats here to avoid spamming React updates. Stats are updated in the UI sync loop.
           }
       }
   };
@@ -384,7 +379,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   const spawnExplosion = (x: number, y: number, size: number, damage: number = 0) => {
       AudioService.explosion();
       objectsRef.current.push({ id: `ex-${Date.now()}`, x: x-size/2, y: y-size/2, vx:0, vy:0, width: size, height: size, color: '#f87171', type: 'explosion', hp: 10, damage: 0 });
-      // OPTIMIZATION: Reduce particle count for explosions to prevent lag
       spawnParticle(x, y, '#fca5a5', 8); 
       
       const explosionRect = { x: x - size/2, y: y - size/2, width: size, height: size, id: 'temp', vx:0, vy:0, color:'', type:'explosion' as const, hp: 0 };
@@ -423,7 +417,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       setWeapons(prev => ({ ...prev, [editingWeapon]: { ...prev[editingWeapon], [field]: val } }));
   };
   
-  // --- TOUCH CONTROL HANDLERS ---
   const handleTouchStart = (action: string) => {
       keysRef.current[action] = true;
       if (action === 'click') setTouchState(prev => ({...prev, fire: true}));
@@ -445,9 +438,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       if (action === 'ArrowRight') setTouchState(prev => ({...prev, right: false}));
   };
 
-  // -----------------------------------------------------------------------------------------
-  // GAME LOOP
-  // -----------------------------------------------------------------------------------------
   const loop = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -461,10 +451,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     const player = playerRef.current;
     const mods = modifiersRef.current;
     
-    // Decrement Invulnerability
     if (player.invulnTimer > 0) player.invulnTimer--;
 
-    // --- Input & Physics Logic ---
     ['1','2','3','4','5','6','7'].forEach(key => { if (keysRef.current[key]) switchWeapon(parseInt(key)); });
 
     const moveSpeed = BASE_MOVE_SPEED * mods.moveSpeedMult;
@@ -478,42 +466,35 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
     if (player.y + player.height >= groundLevel) { player.y = groundLevel - player.height; player.vy = 0; player.grounded = true; player.jumps = 0; } else { player.grounded = false; }
     
-    // Terrain / Crate Logic
     const crates = objectsRef.current.filter(o => o.type.startsWith('crate'));
     crates.forEach(crate => {
         if (checkCollision(player, crate)) {
             
-            // HAZARD LOGIC
-            if (crate.type === 'crate_hazard') {
-                if (player.invulnTimer <= 0) {
-                    player.hp -= 1; 
-                    AudioService.hit(); 
-                    spawnParticle(player.x, player.y, '#ef4444', 15);
-                    player.invulnTimer = 90;
-                    // Knockback
-                    player.vy = -10; 
-                    player.vx = player.x < crate.x ? -10 : 10;
-                    if(player.hp <= 0) { setGameState('gameover'); }
-                }
-                return; // Don't process collision physics if hit by hazard (or maybe knockback handles it)
-            }
-
             const overlapX = (player.width + crate.width)/2 - Math.abs((player.x + player.width/2) - (crate.x + crate.width/2));
             const overlapY = (player.height + crate.height)/2 - Math.abs((player.y + player.height/2) - (crate.y + crate.height/2));
             
             if (overlapX < overlapY) {
-                // Horizontal Collision
                 if (player.x < crate.x) player.x = crate.x - player.width; else player.x = crate.x + crate.width;
                 player.vx = 0;
             } else {
-                // Vertical Collision
                 if (player.y < crate.y) { 
                     player.y = crate.y - player.height; 
-                    // BOUNCY LOGIC
+                    
                     if (crate.type === 'crate_bouncy') {
-                        player.vy = -22; // Super Jump
-                        player.jumps = 1; // Allow one more jump
+                        player.vy = -22; 
+                        player.jumps = 1; 
                         AudioService.jump();
+                    } else if (crate.type === 'crate_hazard') {
+                         if (player.invulnTimer <= 0) {
+                            player.hp -= 1; 
+                            AudioService.hit(); 
+                            spawnParticle(player.x, player.y, '#ef4444', 15);
+                            player.invulnTimer = 90;
+                            player.vy = -10; 
+                            if(player.hp <= 0) { setGameState('gameover'); }
+                        } else {
+                             player.vy = -10;
+                        }
                     } else {
                         player.vy = 0; 
                         player.grounded = true; 
@@ -528,9 +509,8 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         }
     });
 
-    // Camera (OPTIMIZATION: Smooth Lookahead)
-    const targetCamX = (player.x - 300) + (player.vx * 20); // Look ahead based on speed
-    cameraRef.current += (targetCamX - cameraRef.current) * 0.08; // Smooth interpolation
+    const targetCamX = (player.x - 300) + (player.vx * 20);
+    cameraRef.current += (targetCamX - cameraRef.current) * 0.08; 
     if (cameraRef.current < 0) cameraRef.current = 0;
     if (player.x < cameraRef.current) player.x = cameraRef.current;
 
@@ -540,7 +520,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     if (calculatedStage > stageRef.current) {
         stageRef.current = calculatedStage;
         setShowLevelUp(true);
-        // TRIGGER DRAFT MODE
         generateCards();
         setGameState('drafting');
         
@@ -551,18 +530,14 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         bossSpawnedRef.current = stageRef.current;
     }
 
-    // Spawning
     const enemySpawnInterval = Math.max(15, 30 - (stageRef.current * 2));
     if (currentDist > lastEnemySpawnDistRef.current + enemySpawnInterval) { spawnEnemy(canvas.width); lastEnemySpawnDistRef.current = currentDist; }
     if (currentDist > lastTerrainSpawnDistRef.current + 20) { spawnTerrain(canvas.width, groundLevel); lastTerrainSpawnDistRef.current = currentDist; }
 
-    // Shooting
     const weapon = weapons[selectedWeaponIdx];
     const now = Date.now();
     const isFiring = keysRef.current['f'] || keysRef.current['Enter'] || keysRef.current['click'] || autoFireRef.current;
     
-    // Apply Cooldown Modifier (Fire Rate)
-    // Higher fireRateMult = Lower Cooldown
     const effectiveCooldown = weapon.cooldown / mods.fireRateMult;
     
     if (isFiring && now - lastShotTimeRef.current > effectiveCooldown) {
@@ -570,11 +545,9 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         const playerScreenX = player.x - cameraRef.current + player.width/2;
         const playerScreenY = player.y + player.height/3;
         
-        // Auto-aim if auto-firing, else use mouse/last input
         let targetX = mouseRef.current.x;
         let targetY = mouseRef.current.y;
         
-        // If firing with touch, aim straight ahead or towards nearest enemy
         if (keysRef.current['click'] && !mouseRef.current.x) {
              targetX = playerScreenX + (player.facing === 1 ? 500 : -500);
              targetY = playerScreenY;
@@ -584,13 +557,10 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         const startX = player.x + player.width/2;
         const startY = player.y + player.height/3;
 
-        // Apply Damage Modifier
         let effectiveDamage = weapon.damage * mods.damageMult;
         
-        // Critical Hit Logic
         if (Math.random() < mods.critChance) {
-            effectiveDamage *= 2; // Crits do 2x damage
-            // Ideally we'd show a "CRIT" text here but that's complex in canvas without a text manager
+            effectiveDamage *= 2; 
         }
 
         if (weapon.id === 'quantum') {
@@ -618,39 +588,28 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         player.facing = Math.abs(angle) > Math.PI/2 ? -1 : 1;
     }
 
-    // Object Updates
     objectsRef.current.forEach(obj => {
          if (obj.type.startsWith('crate')) return;
          
-         // Enemy Physics & AI
-         // FIX: Exclude enemy_bullet from standard enemy physics (gravity)
          if (obj.type.startsWith('enemy') && obj.type !== 'enemy_bullet') {
              
-             // --- BOSS AI (Restored) ---
              if (obj.type === 'enemy_mech' && obj.width > 100) {
                  obj.aiTimer = (obj.aiTimer || 0) + 1;
                  const distToPlayer = player.x - obj.x;
 
-                 // State Machine
-                 // 0: Idle/Chase, 1: Attack, 2: Summon, 3: Teleport
-                 
-                 // Phase transition logic
                  if (obj.aiTimer > 200 && obj.aiState === 0) {
                      const rand = Math.random();
-                     if (rand < 0.4) obj.aiState = 1; // 40% chance attack
-                     else if (rand < 0.7) obj.aiState = 2; // 30% chance summon
-                     else obj.aiState = 3; // 30% chance teleport
+                     if (rand < 0.4) obj.aiState = 1; 
+                     else if (rand < 0.7) obj.aiState = 2; 
+                     else obj.aiState = 3; 
                      obj.aiTimer = 0;
                  }
 
                  if (obj.aiState === 0) {
-                     // Idle/Move Phase
                      obj.vx = distToPlayer > 0 ? 0.5 : -0.5;
                  } else if (obj.aiState === 1) {
-                     // Attack Phase
                      obj.vx = 0;
                      if (obj.aiTimer % 20 === 0 && obj.aiTimer < 100) {
-                        // Fire spread
                          for(let i=-1; i<=1; i++) {
                              const angle = Math.atan2((player.y+player.height/2)-obj.y, (player.x+player.width/2)-obj.x) + (i*0.2);
                              objectsRef.current.push({id: `boss-b-${Date.now()}-${i}`, x:obj.x+obj.width/2, y:obj.y+obj.height/3, vx:Math.cos(angle)*5, vy:Math.sin(angle)*5, width:15, height:15, color:'#f87171', type:'enemy_bullet', hp:1, damage:1});
@@ -658,7 +617,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                      }
                      if (obj.aiTimer > 120) { obj.aiState = 0; obj.aiTimer = 0; }
                  } else if (obj.aiState === 2) {
-                     // Summon Phase
                      obj.vx = 0;
                      if (obj.aiTimer === 50) {
                          spawnEnemy(canvas.width, obj.x - 100, obj.y - 100, 'enemy_seeker');
@@ -667,28 +625,23 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                      }
                      if (obj.aiTimer > 80) { obj.aiState = 0; obj.aiTimer = 0; }
                  } else if (obj.aiState === 3) {
-                     // Teleport Phase
                      obj.vx = 0;
                      if (obj.aiTimer === 40) {
-                         spawnParticle(obj.x + obj.width/2, obj.y + obj.height/2, '#ffffff', 30); // Poof old pos
+                         spawnParticle(obj.x + obj.width/2, obj.y + obj.height/2, '#ffffff', 30);
                          obj.x = player.x + (Math.random() > 0.5 ? 300 : -300);
                          obj.y = Math.max(0, player.y - 200);
-                         spawnParticle(obj.x + obj.width/2, obj.y + obj.height/2, '#ffffff', 30); // Poof new pos
+                         spawnParticle(obj.x + obj.width/2, obj.y + obj.height/2, '#ffffff', 30); 
                      }
                      if (obj.aiTimer > 60) { obj.aiState = 0; obj.aiTimer = 0; }
                  }
 
-                 // Apply Physics to Boss
                  obj.vy += GRAVITY;
                  obj.x += obj.vx;
                  obj.y += obj.vy;
                  
-                 // Boss collisions
                  if(obj.y + obj.height >= groundLevel) { obj.y = groundLevel - obj.height; obj.vy = 0; obj.grounded = true; }
              } 
-             // --- STANDARD ENEMY AI ---
              else if (obj.type.includes('air') || obj.type.includes('mage') || obj.type.includes('seeker')) {
-                 // Air logic
                  if(obj.type === 'enemy_meteor') {
                       obj.vy = 6; obj.y += obj.vy;
                       if(obj.y > groundLevel) { obj.hp = 0; spawnExplosion(obj.x + obj.width/2, obj.y, 100, 1); }
@@ -698,13 +651,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                       if (dist > 10) { obj.vx = dx/dist * 3; obj.vy = dy/dist * 3; }
                       obj.x += obj.vx; obj.y += obj.vy;
                  } else {
-                     // Basic hover/move
                      const dx = player.x - obj.x;
                      obj.vx = dx > 0 ? 2 : -2;
                      obj.y += Math.sin(frameCountRef.current * 0.05);
                      obj.x += obj.vx;
                      
-                     // Shoot logic
                      obj.aiTimer = (obj.aiTimer || 0) + 1;
                      if(obj.type === 'enemy_mage' && obj.aiTimer > 150) {
                          const angle = Math.atan2((player.y+player.height/2)-obj.y, (player.x+player.width/2)-obj.x);
@@ -713,41 +664,33 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                      }
                  }
              } else {
-                 // Ground logic
                  obj.vy += GRAVITY;
                  
                  const dx = player.x - obj.x;
                  const dist = Math.abs(dx);
                  let speed = 2;
-                 // Jumper Logic
                  if (obj.type === 'enemy_jumper' && obj.grounded && dist < 300) {
                      obj.vy = -12; obj.vx = dx > 0 ? 5 : -5; obj.grounded = false;
                  } else if (Math.abs(dx) < 800) {
                      obj.vx = dx > 0 ? speed : -speed;
                  } else { obj.vx = 0; }
                  
-                 // Apply X movement
                  obj.x += obj.vx;
                  
-                 // Horizontal Collisions (Walls)
                  crates.forEach(c => { 
                      if(checkCollision(obj, c)) {
-                         // Interactive Crates
                          if (c.type === 'crate_hazard') {
                              applyDamage(obj, 1);
-                             obj.vx *= -1; // Bounce back
+                             obj.vx *= -1; 
                              obj.x += obj.vx * 2;
                              return;
                          }
                          
-                         // Solid Collision
                          if (obj.vx > 0) obj.x = c.x - obj.width;
                          else if (obj.vx < 0) obj.x = c.x + c.width;
                          
-                         // Turn around behavior
                          obj.vx *= -1; 
                          
-                         // Breaker logic: Destroy crate
                          if (obj.type === 'enemy_breaker' && c.type === 'crate_breakable') {
                              applyDamage(c, 10);
                          }
@@ -757,17 +700,14 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                  obj.y += obj.vy;
                  obj.grounded = false;
                  
-                 // Vertical Collisions (Floors/Ceilings)
                  crates.forEach(c => { 
                      if(checkCollision(obj, c)) {
-                         // Hazard
                          if (c.type === 'crate_hazard') {
                              applyDamage(obj, 1);
                              obj.vy = -5;
                              return;
                          }
                          
-                         // Bouncy
                          if (c.type === 'crate_bouncy' && obj.vy > 0) {
                              obj.vy = -22;
                              obj.y = c.y - obj.height;
@@ -775,13 +715,11 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                              return;
                          }
                          
-                         // Solid Floor
                          if (obj.vy > 0 && obj.y < c.y + c.height/2) { 
                              obj.y = c.y - obj.height; 
                              obj.vy = 0; 
                              obj.grounded = true; 
                          }
-                         // Ceiling
                          else if (obj.vy < 0) {
                              obj.y = c.y + c.height;
                              obj.vy = 0;
@@ -793,30 +731,25 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
              }
          }
          
-         // Projectiles
          if (obj.type === 'bullet' || obj.type === 'enemy_bullet') {
              if (obj.isGrenade) { obj.vy += GRAVITY * 0.5; if(obj.y > groundLevel) { obj.hp = 0; spawnExplosion(obj.x, obj.y, obj.explosionRadius||150, obj.damage||200); }}
              else if (obj.isRocket && obj.y > groundLevel) { obj.hp = 0; spawnExplosion(obj.x, obj.y, obj.explosionRadius||200, obj.damage||300); }
              obj.x += obj.vx; obj.y += obj.vy;
          }
          
-         // Effects
          if (obj.type === 'explosion') obj.hp--;
          if (obj.type === 'particle') { obj.x += obj.vx; obj.y += obj.vy; obj.width *= 0.9; obj.height *= 0.9; if(obj.width < 0.5) obj.hp = 0; }
     });
     
-    // Collisions
     const bullets = objectsRef.current.filter(o => o.type === 'bullet');
     const enemies = objectsRef.current.filter(o => o.type.startsWith('enemy'));
     bullets.forEach(b => {
-        // Enemy Hit
         enemies.forEach(e => {
             if(checkCollision(b, e)) {
                 if(b.isGrenade || b.isRocket) { b.hp = 0; spawnExplosion(b.x, b.y, b.explosionRadius||150, b.damage||200); }
                 else { applyDamage(e, b.damage||1); b.hp = 0; spawnParticle(b.x, b.y, '#fff', 5); }
             }
         });
-        // Breakable Crate Hit
         crates.filter(c => c.type === 'crate_breakable').forEach(c => {
              if(checkCollision(b, c)) {
                  if(b.isGrenade || b.isRocket) { b.hp = 0; spawnExplosion(b.x, b.y, b.explosionRadius||150, b.damage||200); }
@@ -826,17 +759,14 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         if(Math.abs(b.x - cameraRef.current) > canvas.width + 200) b.hp = 0;
     });
     
-    // Player Hit
     [...enemies, ...objectsRef.current.filter(o => o.type === 'enemy_bullet')].forEach(e => {
         if(checkCollision(e, player)) {
-            // FIX: Check invulnerability
             if (player.invulnTimer <= 0) {
                 player.hp -= 1; 
                 AudioService.hit(); 
                 spawnParticle(player.x, player.y, '#ef4444', 15);
-                player.invulnTimer = 90; // 1.5 seconds invulnerability
+                player.invulnTimer = 90; 
                 
-                // Knockback
                 player.vy = -6; 
                 player.vx = player.x < e.x ? -10 : 10; 
                 
@@ -848,25 +778,18 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
     objectsRef.current = objectsRef.current.filter(o => o.hp > 0 && o.x > cameraRef.current - 400 && o.x < cameraRef.current + canvas.width + 400);
     
-    // OPTIMIZATION: Throttle React UI Updates
     const nowUi = Date.now();
-    if (nowUi - lastUiUpdateRef.current > 100) { // Update UI every 100ms
+    if (nowUi - lastUiUpdateRef.current > 100) { 
         setStats(prev => ({...prev, distanceTraveled: distanceRef.current, currentStage: stageRef.current }));
         lastUiUpdateRef.current = nowUi;
     }
 
-    // -------------------------------------------------------------------------------------
-    // RENDER START
-    // -------------------------------------------------------------------------------------
-    
-    // 1. Background (Deep Space with Gradient)
     const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
     bgGrad.addColorStop(0, '#000000');
     bgGrad.addColorStop(1, '#0f172a');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0,0, canvas.width, canvas.height);
 
-    // Stars Parallax
     ctx.fillStyle = '#ffffff';
     starsRef.current.forEach(star => {
         const x = (star.x - cameraRef.current * (0.1 * star.size)) % (canvas.width + 200);
@@ -876,7 +799,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     });
     ctx.globalAlpha = 1;
 
-    // 2. Decor (Far Mountains/Grid)
     ctx.strokeStyle = 'rgba(6, 182, 212, 0.1)';
     ctx.lineWidth = 1;
     for(let i=0; i<canvas.width; i+=100) {
@@ -884,17 +806,14 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         ctx.beginPath(); ctx.moveTo(x, canvas.height); ctx.lineTo(x, canvas.height-200); ctx.stroke();
     }
 
-    // 3. Ground
     ctx.fillStyle = '#020617';
     ctx.fillRect(0, groundLevel, canvas.width, canvas.height - groundLevel);
-    // Neon Line
     ctx.shadowBlur = 10;
     ctx.shadowColor = '#06b6d4';
     ctx.fillStyle = '#06b6d4';
     ctx.fillRect(0, groundLevel, canvas.width, 2);
     ctx.shadowBlur = 0;
 
-    // 4. Objects
     const drawRoundedRect = (x: number, y: number, w: number, h: number, r: number) => {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -913,7 +832,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         const screenX = o.x - cameraRef.current;
         const screenY = o.y;
         
-        // Health Bars (Sleek)
         if (o.type.startsWith('enemy') && o.maxHp && o.type !== 'enemy_bullet') {
             const pct = Math.max(0, o.hp / o.maxHp);
             ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -929,11 +847,10 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         if (o.facing === -1) ctx.scale(-1, 1);
         ctx.translate(-o.width/2, -o.height/2);
 
-        // OPTIMIZATION: Particles are drawn simply without shadowBlur to fix lag
         if (o.type === 'particle') {
              ctx.shadowBlur = 0; 
              ctx.fillStyle = o.color;
-             ctx.globalAlpha = o.hp; // Fade out
+             ctx.globalAlpha = o.hp; 
              ctx.fillRect(0, 0, o.width, o.height);
              ctx.globalAlpha = 1;
              ctx.restore();
@@ -941,34 +858,27 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         }
 
         if (o.type === 'player') {
-            // Visual Blink if Invulnerable
             if (playerRef.current.invulnTimer > 0 && Math.floor(frameCountRef.current / 4) % 2 === 0) {
                 ctx.globalAlpha = 0.4;
             }
 
-            // Player: Futuristic Robot
             ctx.shadowColor = o.color; ctx.shadowBlur = 15;
             
-            // Body Gradient
             const grad = ctx.createLinearGradient(0, 0, 0, o.height);
             grad.addColorStop(0, '#ffffff');
             grad.addColorStop(1, o.color);
             ctx.fillStyle = grad;
             
-            // Draw Capsule Body
             drawRoundedRect(5, 5, o.width-10, o.height-5, 15);
             ctx.fill();
 
-            // Visor
             ctx.fillStyle = '#000000';
             drawRoundedRect(10, 10, o.width-20, 10, 4);
             ctx.fill();
 
-            // Arm/Weapon
             ctx.save();
             ctx.translate(o.width/2, o.height/2);
             const playerScreenCenter = { x: screenX + o.width/2, y: screenY + o.height/2 };
-            // Auto aim logic for visuals
             let targetX = mouseRef.current.x;
             let targetY = mouseRef.current.y;
             if (keysRef.current['click'] && !mouseRef.current.x) {
@@ -982,18 +892,16 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             ctx.rotate(rotation);
             
             ctx.fillStyle = weapons[selectedWeaponIdx].color;
-            drawRoundedRect(0, -4, 30, 8, 2); // Weapon barrel
+            drawRoundedRect(0, -4, 30, 8, 2); 
             ctx.fill();
             ctx.restore();
             
             ctx.globalAlpha = 1;
 
         } else if (o.type === 'enemy_ground' || o.type === 'enemy_dasher') {
-             // Ground Droids
              ctx.shadowColor = o.color; ctx.shadowBlur = 10;
              ctx.fillStyle = o.color;
              
-             // Trapezoid Body
              ctx.beginPath();
              ctx.moveTo(5, o.height);
              ctx.lineTo(-5, 10);
@@ -1001,45 +909,38 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
              ctx.lineTo(o.width - 5, o.height);
              ctx.fill();
              
-             // Head
              ctx.fillStyle = '#1e293b';
              ctx.beginPath(); ctx.arc(o.width/2, 10, 12, Math.PI, 0); ctx.fill();
-             // Eye
              ctx.fillStyle = '#ef4444';
              ctx.beginPath(); ctx.arc(o.width/2 + 4, 6, 3, 0, Math.PI*2); ctx.fill();
 
         } else if (o.type === 'enemy_air' || o.type === 'enemy_seeker') {
-             // Air Units (Tear Drop)
              ctx.shadowColor = o.color; ctx.shadowBlur = 15;
              ctx.fillStyle = o.color;
              ctx.beginPath();
-             ctx.moveTo(o.width, o.height/2); // Front tip
-             ctx.quadraticCurveTo(0, -10, 0, o.height/2); // Top curve
-             ctx.quadraticCurveTo(0, o.height+10, o.width, o.height/2); // Bottom curve
+             ctx.moveTo(o.width, o.height/2); 
+             ctx.quadraticCurveTo(0, -10, 0, o.height/2); 
+             ctx.quadraticCurveTo(0, o.height+10, o.width, o.height/2); 
              ctx.fill();
              
-             // Engine Glow
              ctx.fillStyle = '#ffffff';
              ctx.beginPath(); ctx.arc(5, o.height/2, 4, 0, Math.PI*2); ctx.fill();
 
         } else if (o.type === 'enemy_mech' || o.type === 'enemy_breaker') {
-             // Heavy Mechs / BOSS
              const isBoss = o.width > 100;
              ctx.shadowColor = o.color; ctx.shadowBlur = 10;
-             ctx.fillStyle = '#1e293b'; // Dark metal body
+             ctx.fillStyle = '#1e293b'; 
              drawRoundedRect(0, 0, o.width, o.height, 8);
              ctx.fill();
              
-             // Colored Armor Plates
              ctx.fillStyle = o.color;
-             drawRoundedRect(5, 5, o.width-10, 20, 4); // Chest
+             drawRoundedRect(5, 5, o.width-10, 20, 4); 
              ctx.fill();
-             drawRoundedRect(5, o.height-30, 15, 30, 4); // Leg L
+             drawRoundedRect(5, o.height-30, 15, 30, 4); 
              ctx.fill();
-             drawRoundedRect(o.width-20, o.height-30, 15, 30, 4); // Leg R
+             drawRoundedRect(o.width-20, o.height-30, 15, 30, 4); 
              ctx.fill();
              
-             // Boss Eye / Charge Indicator
              if (isBoss) {
                  ctx.fillStyle = (o.aiState === 1 || o.aiState === 2) ? '#ffffff' : '#ef4444';
                  ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 20;
@@ -1047,7 +948,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
              }
 
         } else if (o.type === 'crate') {
-            // Neon Crates (Solid)
             ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
             ctx.strokeStyle = '#06b6d4';
             ctx.lineWidth = 2;
@@ -1058,43 +958,40 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             ctx.fill();
             ctx.stroke();
             
-            // Grid pattern inside
             ctx.fillStyle = 'rgba(6, 182, 212, 0.1)';
             for(let i=10; i<o.width; i+=20) ctx.fillRect(i, 0, 1, o.height);
 
         } else if (o.type === 'crate_breakable') {
-            // Destructible Glass Block
             ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 8;
-            ctx.fillStyle = `rgba(59, 130, 246, ${o.hp/50 * 0.4})`; // Fade as hp drops
+            ctx.fillStyle = `rgba(59, 130, 246, ${o.hp/50 * 0.4})`; 
             ctx.strokeStyle = '#60a5fa';
             ctx.lineWidth = 1;
             drawRoundedRect(0,0,o.width,o.height, 2);
             ctx.fill(); ctx.stroke();
-            // Data Grid
             ctx.fillStyle = 'rgba(96, 165, 250, 0.3)';
             for(let i=0; i<o.width; i+=15) for(let j=0; j<o.height; j+=15) ctx.fillRect(i,j,2,2);
 
         } else if (o.type === 'crate_hazard') {
-            // Hazard Block (Spikes)
             ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 10;
-            ctx.fillStyle = '#450a0a'; // Dark Red
+            ctx.fillStyle = '#450a0a'; 
             drawRoundedRect(0,0,o.width,o.height, 4);
             ctx.fill();
             
-            // Spikes on top
             ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
             for(let i=0; i<o.width; i+=20) {
-                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i+10, -10); ctx.lineTo(i+20, 0); ctx.fill();
+                ctx.moveTo(i, 0); 
+                ctx.lineTo(i+10, -10); 
+                ctx.lineTo(i+20, 0); 
             }
+            ctx.fill();
 
         } else if (o.type === 'crate_bouncy') {
-            // Bounce Pad
             ctx.shadowColor = '#22c55e'; ctx.shadowBlur = 10;
-            ctx.fillStyle = '#052e16'; // Dark Green
+            ctx.fillStyle = '#052e16'; 
             drawRoundedRect(0,0,o.width,o.height, 4);
             ctx.fill();
             
-            // Arrows
             ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.moveTo(10, o.height/2); ctx.lineTo(o.width/2, 5); ctx.lineTo(o.width-10, o.height/2); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(10, o.height/2+10); ctx.lineTo(o.width/2, 15); ctx.lineTo(o.width-10, o.height/2+10); ctx.stroke();
@@ -1103,26 +1000,23 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
              ctx.shadowColor = o.color; ctx.shadowBlur = 10;
              
              if (o.type === 'enemy_bullet') {
-                // FIX: Draw as a rotated projectile instead of a circle
                 ctx.save();
                 ctx.translate(o.width/2, o.height/2);
                 const angle = Math.atan2(o.vy, o.vx);
                 ctx.rotate(angle);
                 ctx.fillStyle = o.color;
-                drawRoundedRect(-6, -2, 12, 4, 2); // Capsule shape
+                drawRoundedRect(-6, -2, 12, 4, 2); 
                 ctx.fill();
                 ctx.restore();
              } else {
                  ctx.fillStyle = '#ffffff';
                  ctx.beginPath(); 
                  if (o.type === 'bullet' && !o.isGrenade && !o.isRocket) {
-                     // Laser beam look
                      drawRoundedRect(0, 0, o.width, o.height, 2);
                  } else {
                      ctx.arc(o.width/2, o.height/2, o.width/2, 0, Math.PI*2);
                  }
                  ctx.fill();
-                 // Outer glow
                  ctx.fillStyle = o.color;
                  ctx.globalAlpha = 0.5;
                  ctx.beginPath(); ctx.arc(o.width/2, o.height/2, o.width, 0, Math.PI*2); ctx.fill();
@@ -1137,7 +1031,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
              ctx.globalAlpha = 1;
              
         } else {
-            // Fallback
             ctx.fillStyle = o.color;
             ctx.fillRect(0,0,o.width,o.height);
         }
@@ -1150,7 +1043,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         drawObj(o);
     });
 
-    // Crosshair
     if (mouseRef.current.x !== 0) {
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1;
@@ -1159,7 +1051,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
     }
 
     requestRef.current = requestAnimationFrame(loop);
-  }, [gameState, selectedWeaponIdx, weapons]); // Dependencies
+  }, [gameState, selectedWeaponIdx, weapons]); 
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1207,7 +1099,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
 
       {/* --- UI OVERLAYS (Apple Style Glassmorphism) --- */}
 
-      {/* Stage Notification */}
       {showLevelUp && (
           <div className="absolute top-1/4 left-0 w-full text-center pointer-events-none animate-in fade-in zoom-in duration-500">
               <h1 className="text-7xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500 drop-shadow-2xl tracking-tighter">
@@ -1225,7 +1116,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           </div>
       )}
 
-      {/* Top Left HUD - Floating Glass Island */}
       <div className="absolute top-6 left-6 flex flex-col gap-4 pointer-events-none z-10 hidden md:flex">
             <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-4 rounded-3xl shadow-2xl max-w-sm">
                 <p className="text-[10px] uppercase tracking-widest text-cyan-400/80 mb-1 font-bold">Current Objective</p>
@@ -1242,7 +1132,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                 <div className="text-xs font-mono text-cyan-400">{stats.distanceTraveled}m</div>
             </div>
 
-            {/* Health Pips */}
             <div className="flex gap-1.5 pl-2">
                  {[...Array(playerRef.current.maxHp || baseMaxHp)].map((_, i) => (
                     <div 
@@ -1257,7 +1146,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
             </div>
       </div>
       
-      {/* Mobile Simplified HUD */}
       <div className="absolute top-4 left-4 right-4 flex justify-between md:hidden pointer-events-none">
            <div className="flex gap-1">
                 {[...Array(playerRef.current.maxHp || baseMaxHp)].map((_, i) => (
@@ -1267,7 +1155,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
            <div className="text-xs font-mono text-cyan-400">{stats.score}</div>
       </div>
       
-      {/* Auto Fire Indicator */}
       <div className="absolute bottom-32 left-8 md:bottom-10 md:left-10 pointer-events-none">
           <div className={`
               flex items-center gap-3 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300
@@ -1282,9 +1169,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           </div>
       </div>
       
-      {/* TOUCH CONTROLS (Mobile/Tablet Only) */}
       <div className="absolute inset-0 pointer-events-none md:hidden z-30">
-          {/* Left Joystick Area */}
           <div className="absolute bottom-8 left-8 flex items-center gap-4 pointer-events-auto">
              <button 
                 className={`w-16 h-16 rounded-full backdrop-blur-xl border border-white/20 flex items-center justify-center transition-all active:scale-95 active:bg-white/20 ${touchState.left ? 'bg-white/20 scale-95' : 'bg-white/5'}`}
@@ -1302,7 +1187,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
              </button>
           </div>
 
-          {/* Right Action Buttons */}
           <div className="absolute bottom-8 right-8 flex items-center gap-4 pointer-events-auto">
              <button 
                 className={`w-16 h-16 rounded-full backdrop-blur-xl border border-emerald-500/30 flex items-center justify-center transition-all active:scale-95 active:bg-emerald-500/20 ${touchState.jump ? 'bg-emerald-500/20 scale-95' : 'bg-emerald-900/20'}`}
@@ -1321,7 +1205,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           </div>
       </div>
 
-      {/* Top Right: Weapon Dock (iOS Style) */}
       <div className="absolute top-16 right-4 md:top-6 md:right-6 p-2 bg-slate-900/40 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl flex flex-col md:flex-row gap-2 md:gap-3 pointer-events-auto z-20 scale-75 md:scale-100 origin-top-right">
         {Object.keys(weapons).map((keyStr) => {
             const num = parseInt(keyStr);
@@ -1353,7 +1236,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
         })}
       </div>
 
-      {/* DRAFTING MODAL */}
       {gameState === 'drafting' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-lg z-50 p-6 animate-in fade-in duration-300">
               <div className="max-w-5xl w-full">
@@ -1369,19 +1251,27 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                            <button
                                key={card.id}
                                onClick={() => handleSelectCard(card)}
-                               className="relative group bg-slate-900/60 border border-white/10 rounded-3xl p-6 h-80 flex flex-col items-center text-center transition-all hover:scale-105 hover:-translate-y-2 hover:bg-slate-800 hover:shadow-2xl"
+                               className="relative group bg-slate-900/60 border border-white/10 rounded-3xl p-6 h-80 flex flex-col items-center text-center transition-all hover:scale-105 hover:-translate-y-2 hover:bg-slate-800 hover:shadow-2xl overflow-hidden"
                                style={{ animationDelay: `${idx * 100}ms` }}
                            >
-                               {/* Rarity Glow */}
                                <div 
-                                    className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl"
-                                    style={{ backgroundColor: RARITY_COLORS[card.rarity] + '33' }}
+                                    className={`absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl ${card.rarity === 'Mythic' ? 'animate-pulse' : ''}`}
+                                    style={{ 
+                                        backgroundColor: RARITY_COLORS[card.rarity] + '33',
+                                        background: card.rarity === 'Mythic' ? 'linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000)' : undefined,
+                                        opacity: card.rarity === 'Mythic' ? 0.3 : undefined
+                                    }}
                                />
                                
                                <div className="relative z-10 w-full flex-grow flex flex-col items-center">
                                    <div 
                                         className="text-xs font-bold uppercase tracking-widest mb-4 px-3 py-1 rounded-full border border-white/10"
-                                        style={{ color: RARITY_COLORS[card.rarity], borderColor: RARITY_COLORS[card.rarity] + '44', backgroundColor: RARITY_COLORS[card.rarity] + '11' }}
+                                        style={{ 
+                                            color: RARITY_COLORS[card.rarity], 
+                                            borderColor: RARITY_COLORS[card.rarity] + '44', 
+                                            backgroundColor: RARITY_COLORS[card.rarity] + '11',
+                                            boxShadow: card.rarity === 'Mythic' ? `0 0 10px ${RARITY_COLORS['Mythic']}` : undefined
+                                        }}
                                    >
                                        {card.rarity}
                                    </div>
@@ -1394,7 +1284,9 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                                        {card.type === 'crit' && <Skull size={48} color={RARITY_COLORS[card.rarity]} />}
                                    </div>
 
-                                   <h3 className="text-xl font-bold text-white mt-6 mb-2">{card.description}</h3>
+                                   <h3 className={`text-xl font-bold text-white mt-6 mb-2 ${card.rarity === 'Mythic' ? 'text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 animate-pulse' : ''}`}>
+                                       {card.description}
+                                   </h3>
                                    <p className="text-xs text-slate-500 uppercase font-semibold">
                                        {card.type} Upgrade
                                    </p>
@@ -1406,14 +1298,12 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           </div>
       )}
 
-      {/* Score */}
       <div className="absolute bottom-32 right-10 md:bottom-10 md:right-10 pointer-events-none hidden md:block">
           <div className="text-7xl font-bold text-white/5 tracking-tighter select-none">
                 {stats.score.toString().padStart(6, '0')}
           </div>
       </div>
 
-      {/* Settings Modal (iOS Sheet) */}
       {editingWeapon !== null && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
               <div className="bg-slate-900/90 border border-white/10 p-6 md:p-8 rounded-[2rem] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-300 backdrop-blur-xl">
@@ -1455,7 +1345,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
           </div>
       )}
 
-      {/* Game Over Screen */}
       {gameState === 'gameover' && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md z-50 cursor-auto p-4">
           <div className="text-center p-6 md:p-10 max-w-lg w-full animate-in slide-in-from-bottom-10 fade-in duration-500 bg-slate-900/50 rounded-3xl border border-white/5 shadow-2xl">
