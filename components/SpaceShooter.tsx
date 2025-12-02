@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameStats, GameObject, PlayerProfile, WeaponType, GameObjectType, GameState, CardRarity, PowerUpCard, PlayerModifiers } from '../types';
-import { ArrowLeft, RefreshCw, Zap, Shield, Crosshair, Target, Bomb, Skull, Settings, Flame, Atom, Cpu, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Dna, Info, X } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Zap, Shield, Crosshair, Target, Bomb, Skull, Settings, Flame, Atom, Cpu, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Dna, Info, X, Heart } from 'lucide-react';
 import { AudioService } from '../services/audio';
 
 interface RunAndGunProps {
@@ -28,13 +28,17 @@ interface GameEntity extends GameObject {
     hazardTimer?: number; // Cooldown for hazard damage
 }
 
+// Performance Limits
+const MIN_COOLDOWN = 80; // Minimum delay between shots in ms (Max 12.5 shots/sec)
+const MAX_PROJECTILES = 8; // Max projectiles per shot
+
 const DEFAULT_WEAPONS: Record<number, WeaponConfig> = {
-    1: { id: 'pistol', name: 'M9 Blaster', cooldown: 200, color: '#38bdf8', damage: 25, speed: 12, projectileCount: 1 },
-    2: { id: 'machinegun', name: 'Auto Rifle', cooldown: 80, color: '#facc15', damage: 15, speed: 18, projectileCount: 1 },
-    3: { id: 'sniper', name: 'Sniper', cooldown: 1000, color: '#ec4899', damage: 150, speed: 30, projectileCount: 1 },
-    4: { id: 'shotgun', name: 'Shotgun', cooldown: 700, color: '#ef4444', damage: 20, speed: 12, projectileCount: 5 },
-    5: { id: 'grenade', name: 'Bomb', cooldown: 800, color: '#10b981', damage: 200, speed: 10, explosionRadius: 150, projectileCount: 1 },
-    6: { id: 'rocket', name: 'Rocket', cooldown: 1200, color: '#f97316', damage: 300, speed: 15, explosionRadius: 200, projectileCount: 1 },
+    1: { id: 'pistol', name: 'M9 Blaster', cooldown: 200, color: '#38bdf8', damage: 25, speed: 25, projectileCount: 1 },
+    2: { id: 'machinegun', name: 'Auto Rifle', cooldown: 100, color: '#facc15', damage: 15, speed: 30, projectileCount: 1 },
+    3: { id: 'sniper', name: 'Sniper', cooldown: 1000, color: '#ec4899', damage: 150, speed: 60, projectileCount: 1 },
+    4: { id: 'shotgun', name: 'Shotgun', cooldown: 700, color: '#ef4444', damage: 20, speed: 25, projectileCount: 5 },
+    5: { id: 'grenade', name: 'Bomb', cooldown: 800, color: '#10b981', damage: 200, speed: 25, explosionRadius: 150, projectileCount: 1 },
+    6: { id: 'rocket', name: 'Rocket', cooldown: 1200, color: '#f97316', damage: 300, speed: 40, explosionRadius: 200, projectileCount: 1 },
     7: { id: 'quantum', name: 'Quantum', cooldown: 5000, color: '#8b5cf6', damage: 1000, speed: 0, explosionRadius: 9999, projectileCount: 0 }
 };
 
@@ -81,10 +85,6 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
   const GRID_SIZE = 250; // Spatial Grid Cell Size
   const MAX_PARTICLES = 100;
   const MAX_BULLETS = 100;
-  
-  // Performance Limits
-  const MIN_COOLDOWN = 60; // Minimum delay between shots in ms (approx 16 shots/sec max)
-  const MAX_PROJECTILES = 8; // Max projectiles per shot
 
   // Refs
   const requestRef = useRef<number>(0);
@@ -938,6 +938,40 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
       }
   }
 
+  const renderHealthDisplay = (mobile: boolean) => {
+      const hp = Math.ceil(playerRef.current.hp);
+      const maxHp = playerRef.current.maxHp || baseMaxHp;
+      
+      if (maxHp > 3) {
+          return (
+               <div className="flex items-center gap-2">
+                  <div className={`flex items-center justify-center ${mobile ? 'w-6 h-6' : 'w-8 h-8'} rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-400`}>
+                      <Heart size={mobile ? 12 : 16} className="fill-emerald-500/50" />
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                       <span className={`${mobile ? 'text-lg' : 'text-2xl'} font-bold text-emerald-400 font-mono`}>x{hp}</span>
+                       <span className={`${mobile ? 'text-[10px]' : 'text-xs'} text-emerald-600/60 font-mono`}>/{maxHp}</span>
+                  </div>
+               </div>
+          );
+      }
+  
+      return (
+          <div className={`flex ${mobile ? 'gap-1' : 'gap-1.5 pl-2'}`}>
+               {[...Array(maxHp)].map((_, i) => (
+                  <div 
+                      key={i} 
+                      className={`${mobile ? 'w-6 h-1.5' : 'w-8 h-2'} rounded-full transition-all duration-300 ${
+                          i < hp 
+                          ? 'bg-gradient-to-r from-green-400 to-emerald-500 shadow-[0_0_10px_#4ade80]' 
+                          : 'bg-white/10'
+                      }`} 
+                  />
+              ))}
+          </div>
+      );
+  };
+
   return (
     <div className="fixed inset-0 w-full h-full bg-slate-950 overflow-hidden font-sans touch-none select-none">
       <canvas ref={canvasRef} className="block w-full h-full" />
@@ -977,27 +1011,12 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                 <div className="text-xs font-mono text-cyan-400">{stats.distanceTraveled}m</div>
             </div>
 
-            <div className="flex gap-1.5 pl-2">
-                 {[...Array(playerRef.current.maxHp || baseMaxHp)].map((_, i) => (
-                    <div 
-                        key={i} 
-                        className={`w-8 h-2 rounded-full transition-all duration-300 ${
-                            i < playerRef.current.hp 
-                            ? 'bg-gradient-to-r from-green-400 to-emerald-500 shadow-[0_0_10px_#4ade80]' 
-                            : 'bg-white/10'
-                        }`} 
-                    />
-                ))}
-            </div>
+            {renderHealthDisplay(false)}
       </div>
       
       <div className="absolute top-4 left-4 right-4 flex justify-between md:hidden pointer-events-none">
-           <div className="flex gap-1">
-                {[...Array(playerRef.current.maxHp || baseMaxHp)].map((_, i) => (
-                    <div key={i} className={`w-6 h-1.5 rounded-full ${i < playerRef.current.hp ? 'bg-green-500' : 'bg-white/10'}`} />
-                ))}
-           </div>
-           <div className="text-xs font-mono text-cyan-400">{stats.score}</div>
+           {renderHealthDisplay(true)}
+           <div className="text-xs font-mono text-cyan-400 pt-1">{stats.score}</div>
       </div>
       
       <div className="absolute bottom-32 left-8 md:bottom-10 md:left-10 pointer-events-auto flex flex-col gap-3">
@@ -1138,10 +1157,16 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                                  {Math.round(BASE_MOVE_SPEED * modifiers.moveSpeedMult * 10)}
                              </div>
                          </div>
-                          <div className="bg-white/5 p-3 rounded-2xl col-span-2">
+                          <div className="bg-white/5 p-3 rounded-2xl">
                              <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Shot Velocity</div>
                              <div className="text-xl font-bold text-orange-400">
                                  {weapons[selectedWeaponIdx].speed}
+                             </div>
+                         </div>
+                         <div className="bg-white/5 p-3 rounded-2xl">
+                             <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Multi-Shot</div>
+                             <div className="text-xl font-bold text-indigo-400">
+                                 x{weapons[selectedWeaponIdx].projectileCount || 1}
                              </div>
                          </div>
                      </div>
@@ -1246,7 +1271,7 @@ const RunAndGunGame: React.FC<RunAndGunProps> = ({ onExit, missionBriefing, play
                   
                   <div className="space-y-6">
                       {[
-                          { label: 'Fire Rate (Delay)', field: 'cooldown', min: 60, max: 2000, color: 'accent-cyan-500' },
+                          { label: 'Fire Rate (Delay)', field: 'cooldown', min: 80, max: 2000, color: 'accent-cyan-500' },
                           { label: 'Damage Output', field: 'damage', min: 1, max: 1000, color: 'accent-pink-500' },
                           { label: 'Velocity', field: 'speed', min: 25, max: 80, color: 'accent-yellow-500' },
                           { label: 'Multi-Shot', field: 'projectileCount', min: 1, max: 6, color: 'accent-emerald-500' }
